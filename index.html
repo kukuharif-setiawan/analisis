@@ -1,0 +1,1268 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistem Penilaian Terpadu - SDN 4 Bandungsari</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Vue 3 -->
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- SheetJS (Excel Import) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <!-- ExcelJS & FileSaver (Excel Export) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+    <!-- html2pdf.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
+    <!-- html-docx-js for DOCX Export -->
+    <script src="https://unpkg.com/html-docx-js@0.3.1/dist/html-docx.js"></script>
+
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #f8fafc; }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        
+        .a4-wrapper { display: flex; flex-direction: column; align-items: center; padding: 20px; }
+        .a4-preview {
+            background: white; box-shadow: 0 4px 10px rgba(0,0,0,0.1); border: 1px solid #e5e7eb;
+            position: relative; box-sizing: border-box; overflow: hidden;
+            transform-origin: top center;
+            transition: transform 0.2s ease;
+        }
+
+        @media print {
+            @page { size: var(--print-size, A4) var(--print-orientation, portrait); margin: var(--print-margin, 1.5cm); }
+            body, html { height: auto !important; overflow: visible !important; background: white !important; }
+            #app, main, .flex-1 { display: block !important; height: auto !important; overflow: visible !important; }
+            aside, header, .no-print { display: none !important; }
+            .a4-wrapper { padding: 0 !important; transform: none !important; }
+            .a4-preview { width: 100% !important; margin: 0 !important; padding: 0 !important; box-shadow: none !important; border: none !important; transform: none !important; }
+            table { page-break-inside: auto; border-collapse: collapse; width: 100%; }
+            tr { page-break-inside: avoid; page-break-after: auto; }
+            td, th { page-break-inside: avoid; }
+            thead { display: table-header-group; }
+            .avoid-page-break { page-break-inside: avoid; }
+        }
+
+        .report-table th, .report-table td { border: 1px solid #000; padding: 6px; font-size: 11px; }
+        .report-table th { background-color: #f3f4f6 !important; font-weight: bold; text-align: center; }
+        
+        .input-nilai { width: 50px; text-align: center; border: 1px solid #d1d5db; border-radius: 4px; padding: 4px; font-size: 12px;}
+        .input-nilai:focus { outline: none; border-color: #3b82f6; }
+    </style>
+</head>
+<body class="text-slate-800 antialiased overflow-hidden">
+
+<div id="app" class="flex h-screen w-full">
+    
+    <!-- Sidebar -->
+    <div v-if="sidebarOpen" class="fixed inset-0 bg-black/50 z-20 md:hidden no-print" @click="sidebarOpen=false"></div>
+    <aside :class="['bg-slate-900 text-white w-64 flex-shrink-0 flex flex-col z-30 no-print transition-transform fixed md:static inset-y-0 left-0', sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0']">
+        <div class="h-16 flex items-center justify-center border-b border-slate-800 px-4">
+            <i class="fa-solid fa-school text-2xl text-blue-400 mr-2"></i>
+            <h1 class="text-base font-bold truncate tracking-wide">SDN 4 Bandungsari</h1>
+        </div>
+        <nav class="flex-1 overflow-y-auto py-4">
+            <ul class="space-y-1">
+                <li v-for="menu in menus" :key="menu.id">
+                    <a href="#" @click.prevent="activeTab = menu.id; sidebarOpen = false" :class="['flex items-center px-6 py-3 text-sm transition', activeTab === menu.id ? 'bg-blue-600 text-white border-l-4 border-white' : 'text-slate-400 hover:bg-slate-800 hover:text-white border-l-4 border-transparent']">
+                        <i :class="[menu.icon, 'w-6 mr-2 text-center']"></i> {{ menu.title }}
+                    </a>
+                </li>
+            </ul>
+        </nav>
+    </aside>
+
+    <main class="flex-1 flex flex-col h-screen overflow-hidden">
+        <!-- Header -->
+        <header class="bg-white shadow-sm h-16 flex items-center justify-between px-6 z-10 no-print flex-shrink-0">
+            <div class="flex items-center">
+                <button class="md:hidden mr-3 text-slate-600" @click="sidebarOpen = true"><i class="fa-solid fa-bars text-lg"></i></button>
+                <h2 class="text-lg font-bold text-slate-800"><i :class="currentMenu.icon" class="mr-2 text-blue-600"></i>{{ currentMenu.title }}</h2>
+            </div>
+            <div class="text-right flex flex-col justify-center">
+                <span class="text-sm font-bold">Kelas {{ settings.kelas }} | TP: {{ settings.tp }} | SMT: {{ settings.semester }}</span>
+                <span class="text-xs text-slate-500 cursor-pointer hover:text-slate-800" @click="syncNow" title="Klik untuk sinkron sekarang"><i :class="[syncInfo.icon, 'mr-1']"></i>{{ syncInfo.text }}</span>
+            </div>
+        </header>
+
+        <!-- Content Area -->
+        <div class="flex-1 overflow-y-auto p-6 bg-slate-50 no-print relative">
+            
+            <!-- 1. DASHBOARD -->
+            <div v-show="activeTab === 'dashboard'" class="space-y-6">
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+                    <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-200 flex justify-between items-center">
+                        <div><p class="text-xs font-bold text-slate-400 uppercase">Total Siswa</p><h3 class="text-2xl font-black mt-1">{{ siswa.length }}</h3></div>
+                        <i class="fa-solid fa-users text-3xl text-blue-100"></i>
+                    </div>
+                    <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-200 flex justify-between items-center">
+                        <div><p class="text-xs font-bold text-slate-400 uppercase">Mata Pelajaran</p><h3 class="text-2xl font-black mt-1">{{ mapel.length }}</h3></div>
+                        <i class="fa-solid fa-book text-3xl text-indigo-100"></i>
+                    </div>
+                    <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-200 flex justify-between items-center">
+                        <div><p class="text-xs font-bold text-slate-400 uppercase">Standar KKM</p><h3 class="text-2xl font-black mt-1">{{ settings.kkm }}</h3></div>
+                        <i class="fa-solid fa-star text-3xl text-amber-100"></i>
+                    </div>
+                    <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-200 flex justify-between items-center">
+                        <div><p class="text-xs font-bold text-slate-400 uppercase">Data Penilaian</p><h3 class="text-2xl font-black mt-1">{{ Object.keys(analisis).length + Object.keys(daftarNilai).length }} <span class="text-sm font-normal text-slate-400">Entri</span></h3></div>
+                        <i class="fa-solid fa-database text-3xl text-emerald-100"></i>
+                    </div>
+                </div>
+                <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+                    <h3 class="text-base font-bold mb-2">Selamat Datang di Sistem Penilaian Terpadu SDN 4 Bandungsari</h3>
+                    <p class="text-sm text-slate-600">Alur Penggunaan: <b>1.</b> Isi Data Siswa -> <b>2.</b> Buat Mapel & Materi -> <b>3.</b> Input Analisis Ulangan Harian (Unduh Template Excel Sinkron / Impor) -> <b>4.</b> Cek Daftar Nilai -> <b>5.</b> Cetak & Unduh.</p>
+                </div>
+            </div>
+
+            <!-- 2. DATA SISWA -->
+            <div v-show="activeTab === 'siswa'" class="space-y-4">
+                <div class="flex justify-between items-center bg-white p-4 rounded-xl shadow-sm border border-slate-200">
+                    <input type="text" v-model="searchSiswa" placeholder="Cari Siswa..." class="px-4 py-2 border rounded-lg text-sm w-64 focus:ring-2 focus:ring-blue-500">
+                    <div class="space-x-2">
+                        <input type="file" ref="fileSiswa" @change="importSiswa" accept=".xlsx" class="hidden">
+                        <button @click="$refs.fileSiswa.click()" class="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-bold"><i class="fa-solid fa-file-excel mr-2"></i>Impor Excel</button>
+                        <button @click="addSiswa" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-bold"><i class="fa-solid fa-plus mr-2"></i>Tambah Siswa</button>
+                    </div>
+                </div>
+                <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                    <table class="w-full text-sm text-left">
+                        <thead class="bg-slate-800 text-white">
+                            <tr><th class="px-4 py-3 w-16 text-center">No</th><th class="px-4 py-3 w-32">NIS</th><th class="px-4 py-3">Nama Siswa</th><th class="px-4 py-3 w-24 text-center">Aksi</th></tr>
+                        </thead>
+                        <tbody>
+                            <tr v-if="filteredSiswa.length===0"><td colspan="4" class="text-center py-8 text-slate-500">Data Kosong</td></tr>
+                            <tr v-for="(s, i) in filteredSiswa" :key="s.id" class="border-b hover:bg-slate-50">
+                                <td class="px-4 py-2 text-center">{{ i+1 }}</td>
+                                <td class="px-4 py-2 font-medium"><input type="text" v-model="s.nis" class="w-full bg-transparent border-none focus:ring-0"></td>
+                                <td class="px-4 py-2"><input type="text" v-model="s.nama" class="w-full bg-transparent border-none focus:ring-0 uppercase font-semibold"></td>
+                                <td class="px-4 py-2 text-center"><button @click="hapusSiswa(s.id)" class="text-rose-500 hover:text-rose-700"><i class="fa-solid fa-trash"></i></button></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- 3. INPUT PELAJARAN (MAPEL & MATERI) -->
+            <div v-show="activeTab === 'pelajaran'" class="space-y-4">
+                <div class="flex gap-4">
+                    <div class="w-1/3 bg-white p-4 rounded-xl shadow-sm border border-slate-200">
+                        <h3 class="font-bold border-b pb-2 mb-3">Daftar Mata Pelajaran</h3>
+                        <div class="flex gap-2 mb-3">
+                            <input type="text" v-model="newMapel" placeholder="Nama Mapel Baru" class="flex-1 px-3 py-1.5 border rounded text-sm focus:ring-2 focus:ring-blue-500">
+                            <button @click="addMapel" class="bg-blue-600 text-white px-3 py-1.5 rounded"><i class="fa-solid fa-plus"></i></button>
+                        </div>
+                        <ul class="space-y-2">
+                            <li v-for="m in mapel" :key="m.id" @click="selectedMapel = m" :class="['p-2 rounded cursor-pointer flex justify-between items-center text-sm border', selectedMapel?.id === m.id ? 'bg-blue-50 border-blue-300 font-bold text-blue-700' : 'hover:bg-slate-50 border-slate-100']">
+                                {{ m.nama }}
+                                <button @click.stop="hapusMapel(m.id)" class="text-slate-400 hover:text-rose-500"><i class="fa-solid fa-times"></i></button>
+                            </li>
+                        </ul>
+                    </div>
+                    <div class="w-2/3 bg-white p-4 rounded-xl shadow-sm border border-slate-200">
+                        <h3 class="font-bold border-b pb-2 mb-3">Materi Pembelajaran <span v-if="selectedMapel" class="text-blue-600">({{ selectedMapel.nama }})</span></h3>
+                        <div v-if="selectedMapel">
+                            <div class="flex gap-2 mb-3">
+                                <input type="text" v-model="newMateri" placeholder="Deskripsi Materi / Tujuan Pembelajaran" class="flex-1 px-3 py-1.5 border rounded text-sm focus:ring-2 focus:ring-blue-500">
+                                <button @click="addMateri" class="bg-emerald-600 text-white px-4 py-1.5 rounded text-sm font-bold"><i class="fa-solid fa-plus mr-1"></i> Tambah</button>
+                            </div>
+                            <div class="overflow-y-auto max-h-96">
+                                <table class="w-full text-sm">
+                                    <thead class="bg-slate-100"><tr><th class="p-2 w-10 text-center">No</th><th class="p-2 text-left">Materi</th><th class="p-2 w-16 text-center">Aksi</th></tr></thead>
+                                    <tbody>
+                                        <tr v-if="selectedMapel.materi.length === 0"><td colspan="3" class="p-4 text-center text-slate-400">Belum ada materi.</td></tr>
+                                        <tr v-for="(mat, i) in selectedMapel.materi" :key="mat.id" class="border-b">
+                                            <td class="p-2 text-center">{{ i+1 }}</td>
+                                            <td class="p-2"><input type="text" v-model="mat.nama" class="w-full bg-transparent border-none focus:ring-1 focus:ring-blue-500 rounded px-1"></td>
+                                            <td class="p-2 text-center"><button @click="hapusMateri(mat.id)" class="text-rose-500"><i class="fa-solid fa-trash"></i></button></td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        <div v-else class="text-center py-10 text-slate-400">Pilih Mata Pelajaran di sebelah kiri terlebih dahulu.</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 4. ANALISIS NILAI HARIAN -->
+            <div v-show="activeTab === 'analisis'" class="space-y-4">
+                <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex flex-wrap gap-4 items-end">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-500 mb-1">Mata Pelajaran</label>
+                        <select v-model="anMapelId" class="px-3 py-2 border rounded-lg text-sm w-48 font-semibold bg-blue-50 focus:ring-2 focus:ring-blue-500">
+                            <option value="">-- Pilih --</option>
+                            <option v-for="m in mapel" :value="m.id">{{ m.nama }}</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-500 mb-1">Materi Pembelajaran</label>
+                        <select v-model="anMateriId" class="px-3 py-2 border rounded-lg text-sm w-72 font-semibold bg-blue-50 focus:ring-2 focus:ring-blue-500" :disabled="!anMapelId">
+                            <option value="">-- Pilih Materi --</option>
+                            <option v-for="mat in currentMateriList" :value="mat.id">{{ mat.nama }}</option>
+                        </select>
+                    </div>
+                    <div class="ml-auto flex gap-2">
+                         <input type="file" ref="fileAnalisis" @change="importAnalisisExcel" accept=".xlsx" class="hidden">
+                         <button @click="downloadAnalisisSyncTemplate" v-if="anMapelId && anMateriId" class="px-4 py-2 bg-amber-600 text-white rounded-lg text-sm font-bold shadow hover:bg-amber-700" title="Unduh Format Sinkronisasi & Impor Nilai Analisis">
+                             <i class="fa-solid fa-download mr-1"></i> Unduh Format Sinkronisasi Excel
+                         </button>
+                         <button @click="$refs.fileAnalisis.click()" v-if="anMapelId && anMateriId" class="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-bold shadow hover:bg-emerald-700">
+                             <i class="fa-solid fa-file-excel mr-1"></i> Impor Nilai Excel
+                         </button>
+                         <button @click="syncToDaftarNilai" v-if="anMapelId && anMateriId" class="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-bold shadow hover:bg-indigo-700">
+                             <i class="fa-solid fa-share-nodes mr-1"></i> Sinkron Daftar Nilai
+                         </button>
+                    </div>
+                </div>
+
+                <div v-if="anMapelId && anMateriId" class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                    <div class="bg-amber-50 p-2 text-xs text-amber-800 border-b border-amber-200 text-center font-medium">Input Nilai Harian atau Impor menggunakan Template Sinkronisasi Excel. Status, Tindak Lanjut, & Nilai Akhir terkalkulasi otomatis.</div>
+                    <div class="overflow-x-auto max-h-[60vh]">
+                        <table class="w-full text-sm text-left whitespace-nowrap">
+                            <thead class="bg-slate-800 text-white sticky top-0 z-10">
+                                <tr>
+                                    <th class="px-4 py-3 w-12 text-center">No</th><th class="px-4 py-3">Nama Siswa</th>
+                                    <th class="px-4 py-3 w-28 text-center bg-blue-700">Nilai Harian</th>
+                                    <th class="px-4 py-3 w-28 text-center">Status</th><th class="px-4 py-3 w-28 text-center">Tindak Lanjut</th>
+                                    <th class="px-4 py-3 w-32 text-center bg-indigo-700">Remidi/Pengayaan</th>
+                                    <th class="px-4 py-3 w-24 text-center bg-emerald-700">Nilai Akhir</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="(s, i) in listAnalisis" :key="s.siswaId" class="border-b hover:bg-slate-50" :class="{'bg-rose-50/20': s.status==='Belum Tuntas'}">
+                                    <td class="px-4 py-2 text-center">{{ i+1 }}</td>
+                                    <td class="px-4 py-2 font-semibold uppercase">{{ s.nama }}</td>
+                                    <td class="px-4 py-2 text-center bg-blue-50/50">
+                                        <input type="number" v-model.number="s.nh" @input="calcAnalisis(s)" class="input-nilai">
+                                    </td>
+                                    <td class="px-4 py-2 text-center font-bold text-xs" :class="s.status==='Tuntas'?'text-emerald-600':'text-rose-600'">{{ s.status }}</td>
+                                    <td class="px-4 py-2 text-center text-xs" :class="s.tl==='Pengayaan'?'text-blue-600':'text-rose-600'">{{ s.tl }}</td>
+                                    <td class="px-4 py-2 text-center bg-indigo-50/50">
+                                        <input type="number" v-model.number="s.rp" @input="calcAnalisis(s)" :disabled="s.nh === null || s.nh === ''" class="input-nilai">
+                                    </td>
+                                    <td class="px-4 py-2 text-center font-black text-base bg-emerald-50/30" :class="s.na>=settings.kkm?'text-emerald-700':'text-rose-600'">{{ s.na }}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div v-else class="text-center py-20 text-slate-400 bg-white rounded-xl border border-slate-200">
+                    <i class="fa-solid fa-list-check text-4xl mb-3"></i><br>Pilih Mata Pelajaran dan Materi untuk mulai menganalisis nilai.
+                </div>
+            </div>
+
+            <!-- 5. DAFTAR NILAI (REKAP) -->
+            <div v-show="activeTab === 'daftar'" class="space-y-4">
+                 <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex gap-4 items-center">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-500 mb-1">Mata Pelajaran</label>
+                        <select v-model="dnMapelId" class="px-3 py-2 border rounded-lg text-sm w-56 font-semibold bg-emerald-50 focus:ring-2 focus:ring-emerald-500">
+                            <option value="">-- Pilih Mapel --</option>
+                            <option v-for="m in mapel" :value="m.id">{{ m.nama }}</option>
+                        </select>
+                    </div>
+                    <div class="text-xs text-slate-500 mt-4"><i class="fa-solid fa-info-circle text-blue-500 mr-1"></i> NH1-NH4 dapat diisi manual atau disinkronkan otomatis dari menu Analisis Nilai.</div>
+                </div>
+                
+                <div v-if="dnMapelId" class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                    <div class="overflow-x-auto max-h-[65vh]">
+                        <table class="w-full text-sm text-center whitespace-nowrap">
+                            <thead class="bg-slate-800 text-white sticky top-0 z-10">
+                                <tr>
+                                    <th rowspan="2" class="px-4 py-2 border-r border-slate-600 w-10">No</th>
+                                    <th rowspan="2" class="px-4 py-2 border-r border-slate-600 text-left">Nama Siswa</th>
+                                    <th colspan="4" class="px-2 py-1 border-b border-slate-600 bg-blue-800">Nilai Harian (NH) Per Materi</th>
+                                    <th rowspan="2" class="px-3 py-2 border-l border-slate-600 bg-blue-700">Rata²<br>NH</th>
+                                    <th rowspan="2" class="px-3 py-2 bg-indigo-700">Nilai<br>UTS</th>
+                                    <th rowspan="2" class="px-3 py-2 bg-purple-700">Nilai<br>UAS</th>
+                                    <th rowspan="2" class="px-4 py-2 bg-emerald-700 text-base">Nilai<br>Akhir</th>
+                                </tr>
+                                <tr>
+                                    <th class="px-2 py-1 bg-blue-700">1</th><th class="px-2 py-1 bg-blue-700">2</th><th class="px-2 py-1 bg-blue-700">3</th><th class="px-2 py-1 bg-blue-700">4</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="(s, i) in listDaftarNilai" :key="s.siswaId" class="border-b hover:bg-slate-50">
+                                    <td class="px-2 py-2 border-r">{{ i+1 }}</td>
+                                    <td class="px-4 py-2 border-r text-left font-semibold uppercase">{{ s.nama }}</td>
+                                    <td class="px-1 py-2"><input type="number" v-model.number="s.nh1" @input="calcDaftar(s)" class="input-nilai"></td>
+                                    <td class="px-1 py-2"><input type="number" v-model.number="s.nh2" @input="calcDaftar(s)" class="input-nilai"></td>
+                                    <td class="px-1 py-2"><input type="number" v-model.number="s.nh3" @input="calcDaftar(s)" class="input-nilai"></td>
+                                    <td class="px-1 py-2"><input type="number" v-model.number="s.nh4" @input="calcDaftar(s)" class="input-nilai"></td>
+                                    <td class="px-2 py-2 font-bold bg-blue-50/50 border-l">{{ s.rataNh }}</td>
+                                    <td class="px-2 py-2 bg-indigo-50/50"><input type="number" v-model.number="s.uts" @input="calcDaftar(s)" class="input-nilai"></td>
+                                    <td class="px-2 py-2 bg-purple-50/50"><input type="number" v-model.number="s.uas" @input="calcDaftar(s)" class="input-nilai"></td>
+                                    <td class="px-4 py-2 font-black text-lg bg-emerald-50/50 text-emerald-700">{{ s.na }}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div v-else class="text-center py-20 text-slate-400 bg-white rounded-xl border border-slate-200">
+                    <i class="fa-solid fa-clipboard-list text-4xl mb-3"></i><br>Pilih Mata Pelajaran untuk melihat atau mengedit Daftar Nilai.
+                </div>
+            </div>
+
+            <!-- 6. CETAK & UNDUH -->
+            <div v-show="activeTab === 'cetak'" class="absolute inset-0 bg-slate-200 overflow-y-auto z-20 flex flex-col items-center pb-20">
+                <div class="sticky top-0 z-30 w-full bg-white shadow-md border-b px-6 py-3 flex flex-wrap gap-4 items-center justify-between no-print">
+                    <div class="flex gap-4 items-center">
+                        <button @click="activeTab='dashboard'" class="text-slate-500 hover:text-rose-600"><i class="fa-solid fa-arrow-left text-xl"></i></button>
+                        <select v-model="printType" class="border p-2 rounded text-sm font-bold bg-slate-50">
+                            <option value="analisis">Cetak: Analisis Ulangan Harian</option>
+                            <option value="daftar">Cetak: Daftar Nilai (Rekap)</option>
+                        </select>
+                        <select v-model="printMapelId" class="border p-2 rounded text-sm bg-slate-50 w-40">
+                            <option value="">-- Pilih Mapel --</option>
+                            <option v-for="m in mapel" :value="m.id">{{ m.nama }}</option>
+                        </select>
+                        <select v-if="printType === 'analisis'" v-model="printMateriId" class="border p-2 rounded text-sm bg-slate-50 w-48">
+                            <option value="">-- Pilih Materi --</option>
+                            <option v-for="mat in (mapel.find(m=>m.id===printMapelId)?.materi || [])" :value="mat.id">{{ mat.nama }}</option>
+                        </select>
+                    </div>
+
+                    <div class="flex gap-2 items-center">
+                        <div class="flex items-center gap-1 bg-slate-100 px-2 py-1 rounded border">
+                            <span class="text-xs font-bold text-slate-600">Zoom:</span>
+                            <input type="range" min="0.5" max="1" step="0.05" v-model.number="printZoom" class="w-24">
+                            <span class="text-xs w-10 text-right">{{ Math.round(printZoom * 100) }}%</span>
+                        </div>
+                        <button @click="doSettings" class="px-3 py-2 bg-slate-600 text-white rounded text-sm"><i class="fa-solid fa-gear"></i> Ukuran</button>
+                        <button @click="exportExcel" class="px-4 py-2 bg-emerald-600 text-white font-bold rounded text-sm shadow hover:bg-emerald-700"><i class="fa-solid fa-file-excel mr-1"></i> Excel (Persis Preview)</button>
+                        <button @click="exportPDF" class="px-4 py-2 bg-rose-600 text-white font-bold rounded text-sm shadow hover:bg-rose-700"><i class="fa-solid fa-file-pdf mr-1"></i> PDF</button>
+                        <button @click="exportDOCX" class="px-4 py-2 bg-indigo-600 text-white font-bold rounded text-sm shadow hover:bg-indigo-700"><i class="fa-solid fa-file-word mr-1"></i> DOCX</button>
+                        <button @click="doPrint" class="px-4 py-2 bg-blue-600 text-white font-bold rounded text-sm shadow hover:bg-blue-700"><i class="fa-solid fa-print mr-1"></i> Print</button>
+                    </div>
+                </div>
+
+                <!-- Margin Settings Modal -->
+                <div v-if="showMarginSettings" class="absolute top-16 right-6 bg-white border shadow-xl rounded-lg p-4 z-40 no-print w-64 text-sm">
+                    <h4 class="font-bold border-b pb-2 mb-3">Pengaturan Kertas & Margin</h4>
+                    <div class="space-y-2">
+                        <div><label class="block text-xs font-bold">Ukuran Kertas</label><select v-model="settings.paper" class="w-full border p-1 rounded"><option value="A4">A4 (210 x 297 mm)</option><option value="F4">F4 / Legal (215 x 330 mm)</option></select></div>
+                        <div><label class="block text-xs font-bold">Orientasi</label><select v-model="settings.orientation" class="w-full border p-1 rounded"><option value="portrait">Portrait</option><option value="landscape">Landscape</option></select></div>
+                        <div><label class="block text-xs font-bold">Margin (cm)</label><input type="number" step="0.1" v-model="settings.margin" class="w-full border p-1 rounded"></div>
+                    </div>
+                    <button @click="applyPrintSettings" class="w-full mt-4 bg-blue-600 text-white p-1 rounded font-bold">Terapkan</button>
+                </div>
+
+                <!-- PREVIEW KERTAS (KOP, LOGO, DATA, ANALISIS, TTD) -->
+                <div class="a4-wrapper text-black mt-4" :style="printWrapperStyle" id="print-area">
+                    <div class="a4-preview bg-white flex flex-col" :style="[printPreviewStyle, { transform: `scale(${printZoom})` }]">
+                        
+                        <!-- KOP SURAT PERSIS PREVIEW -->
+                        <div class="w-full mb-4">
+                            <div class="flex items-center justify-between border-b-[3px] border-black pb-3 mb-4 avoid-page-break" style="border-bottom-style: double;">
+                                <div class="w-[80px] h-[80px] flex items-center justify-center">
+                                    <img v-if="settings.logoKiri" :src="settings.logoKiri" class="max-w-full max-h-full object-contain">
+                                </div>
+                                <div class="text-center flex-1 px-2">
+                                    <h2 class="text-[15px] font-bold uppercase">{{ settings.kop1 }}</h2>
+                                    <h1 class="text-[20px] font-black uppercase tracking-wide leading-tight">{{ settings.kop2 }}</h1>
+                                    <p class="text-[11px] mt-1">{{ settings.kop3 }}</p>
+                                    <p class="text-[10px]">{{ settings.kop4 }}</p>
+                                </div>
+                                <div class="w-[80px] h-[80px] flex items-center justify-center">
+                                    <img v-if="settings.logoKanan" :src="settings.logoKanan" class="max-w-full max-h-full object-contain">
+                                </div>
+                            </div>
+
+                            <!-- JUDUL & INFO -->
+                            <div class="text-center mb-4 avoid-page-break">
+                                <h3 class="text-[14px] font-bold uppercase underline">
+                                    {{ printType === 'analisis' ? 'Laporan Analisis Hasil Ulangan Harian' : 'Daftar Nilai Hasil Belajar Siswa' }}
+                                </h3>
+                            </div>
+                            <div class="flex justify-between text-[11px] font-medium mb-4 avoid-page-break">
+                                <table class="w-1/2 border-none">
+                                    <tr><td class="w-28 py-0.5 border-none">Mata Pelajaran</td><td class="w-2 border-none">:</td><td class="border-none">{{ getMapelName(printMapelId) }}</td></tr>
+                                    <tr v-if="printType === 'analisis'"><td class="py-0.5 border-none">Materi Pokok</td><td class="border-none">:</td><td class="border-none">{{ getMateriName(printMapelId, printMateriId) }}</td></tr>
+                                    <tr><td class="py-0.5 border-none">KKM</td><td class="border-none">:</td><td class="font-bold border-none">{{ settings.kkm }}</td></tr>
+                                </table>
+                                <table class="w-1/2 border-none">
+                                    <tr><td class="w-28 py-0.5 border-none">Kelas / Semester</td><td class="w-2 border-none">:</td><td class="border-none">{{ settings.kelas }} / {{ settings.semester }}</td></tr>
+                                    <tr><td class="py-0.5 border-none">Tahun Pelajaran</td><td class="border-none">:</td><td class="border-none">{{ settings.tp }}</td></tr>
+                                </table>
+                            </div>
+
+                            <!-- TABEL ANALISIS -->
+                            <table v-if="printType === 'analisis'" class="w-full report-table mb-6">
+                                <thead>
+                                    <tr><th class="w-8">No</th><th class="w-20">NIS</th><th>Nama Siswa</th><th class="w-12">Nilai<br>Harian</th><th class="w-16">Status</th><th class="w-16">Tindak<br>Lanjut</th><th class="w-16">Remidi/<br>Pengayaan</th><th class="w-12">Nilai<br>Akhir</th></tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-if="printDataAnalisis.length===0"><td colspan="8" class="text-center py-4">Pilih Mapel & Materi yang memiliki data.</td></tr>
+                                    <tr v-for="(s,i) in printDataAnalisis" :key="i">
+                                        <td class="text-center">{{i+1}}</td><td class="text-center">{{s.nis}}</td><td class="uppercase">{{s.nama}}</td>
+                                        <td class="text-center">{{s.nh}}</td><td class="text-center">{{s.status}}</td><td class="text-center">{{s.tl}}</td><td class="text-center">{{s.rp}}</td><td class="text-center font-bold">{{s.na}}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+
+                            <!-- TABEL DAFTAR NILAI -->
+                            <table v-if="printType === 'daftar'" class="w-full report-table mb-6">
+                                <thead>
+                                    <tr><th rowspan="2" class="w-8">No</th><th rowspan="2" class="w-20">NIS</th><th rowspan="2">Nama Siswa</th><th colspan="4">Nilai Harian</th><th rowspan="2" class="w-12">Rata<br>NH</th><th rowspan="2" class="w-12">UTS</th><th rowspan="2" class="w-12">UAS</th><th rowspan="2" class="w-12">NA</th></tr>
+                                    <tr><th class="w-8">1</th><th class="w-8">2</th><th class="w-8">3</th><th class="w-8">4</th></tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-if="printDataDaftar.length===0"><td colspan="11" class="text-center py-4">Pilih Mapel yang memiliki data.</td></tr>
+                                    <tr v-for="(s,i) in printDataDaftar" :key="i">
+                                        <td class="text-center">{{i+1}}</td><td class="text-center">{{s.nis}}</td><td class="uppercase">{{s.nama}}</td>
+                                        <td class="text-center">{{s.nh1}}</td><td class="text-center">{{s.nh2}}</td><td class="text-center">{{s.nh3}}</td><td class="text-center">{{s.nh4}}</td>
+                                        <td class="text-center font-bold">{{s.rataNh}}</td><td class="text-center">{{s.uts}}</td><td class="text-center">{{s.uas}}</td><td class="text-center font-bold">{{s.na}}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+
+                            <!-- STATISTIK & TTD -->
+                            <div class="flex justify-between text-[11px] mt-6 avoid-page-break">
+                                <div class="w-1/3">
+                                    <div v-if="printType === 'analisis'" class="border border-black p-2 bg-gray-50 w-full">
+                                        <p class="font-bold underline mb-1">Statistik Kelas:</p>
+                                        <table class="w-full border-none">
+                                            <tr class="border-none"><td class="border-none">Rata-rata</td><td class="border-none">:</td><td class="text-right font-bold border-none">{{ printStats.rata }}</td></tr>
+                                            <tr class="border-none"><td class="border-none">Tuntas</td><td class="border-none">:</td><td class="text-right border-none">{{ printStats.tuntas }}</td></tr>
+                                            <tr class="border-none"><td class="border-none">Belum Tuntas</td><td class="border-none">:</td><td class="text-right border-none">{{ printStats.belum }}</td></tr>
+                                            <tr class="border-none"><td class="border-none">Ketuntasan</td><td class="border-none">:</td><td class="text-right font-bold border-none">{{ printStats.persen }}%</td></tr>
+                                        </table>
+                                    </div>
+                                </div>
+                                <div class="w-2/3 flex justify-end gap-16 text-center">
+                                    <div>
+                                        <p class="mb-16">Mengetahui,<br>Kepala Sekolah</p>
+                                        <p class="font-bold underline uppercase">{{ settings.kepsek }}</p>
+                                        <p>NIP. {{ settings.nipKepsek }}</p>
+                                    </div>
+                                    <div>
+                                        <p class="mb-16">{{ settings.tglLaporan }}<br>Guru Kelas {{ settings.kelas }}</p>
+                                        <p class="font-bold underline uppercase">{{ settings.guru }}</p>
+                                        <p>NIP. {{ settings.nipGuru }}</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 7. PENGATURAN -->
+            <div v-show="activeTab === 'pengaturan'" class="max-w-4xl mx-auto bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-6">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <div class="space-y-4">
+                        <h3 class="text-sm font-bold text-blue-600 border-b pb-2 uppercase"><i class="fa-solid fa-building mr-2"></i>Kop Surat & Sekolah</h3>
+                        <div><label class="block text-xs font-bold mb-1">Baris 1 (Pemerintah)</label><input type="text" v-model="settings.kop1" class="w-full border rounded p-2 text-sm focus:ring-1 focus:ring-blue-500"></div>
+                        <div><label class="block text-xs font-bold mb-1">Baris 2 (Nama Sekolah)</label><input type="text" v-model="settings.kop2" class="w-full border rounded p-2 text-sm font-bold focus:ring-1 focus:ring-blue-500"></div>
+                        <div><label class="block text-xs font-bold mb-1">Baris 3 (Alamat)</label><input type="text" v-model="settings.kop3" class="w-full border rounded p-2 text-sm focus:ring-1 focus:ring-blue-500"></div>
+                        <div><label class="block text-xs font-bold mb-1">Baris 4 (Kontak/NPSN)</label><input type="text" v-model="settings.kop4" class="w-full border rounded p-2 text-sm focus:ring-1 focus:ring-blue-500"></div>
+                        <div class="flex gap-4">
+                            <div class="w-1/2">
+                                <label class="block text-xs font-bold mb-1">Logo Kiri (Kabupaten)</label>
+                                <input type="file" @change="e => uploadLogo(e, 'logoKiri')" accept="image/*" class="text-xs mb-1 w-full">
+                                <div class="h-16 border dashed flex items-center justify-center p-1 bg-slate-50"><img v-if="settings.logoKiri" :src="settings.logoKiri" class="h-full object-contain"><span v-else class="text-xs text-slate-400">Kosong</span></div>
+                            </div>
+                            <div class="w-1/2">
+                                <label class="block text-xs font-bold mb-1">Logo Kanan (Sekolah)</label>
+                                <input type="file" @change="e => uploadLogo(e, 'logoKanan')" accept="image/*" class="text-xs mb-1 w-full">
+                                <div class="h-16 border dashed flex items-center justify-center p-1 bg-slate-50"><img v-if="settings.logoKanan" :src="settings.logoKanan" class="h-full object-contain"><span v-else class="text-xs text-slate-400">Kosong</span></div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="space-y-4">
+                        <h3 class="text-sm font-bold text-blue-600 border-b pb-2 uppercase"><i class="fa-solid fa-graduation-cap mr-2"></i>Akademik & Penandatangan</h3>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div><label class="block text-xs font-bold mb-1">Tahun Pelajaran</label><input type="text" v-model="settings.tp" class="w-full border rounded p-2 text-sm focus:ring-1"></div>
+                            <div><label class="block text-xs font-bold mb-1">Semester</label><input type="text" v-model="settings.semester" class="w-full border rounded p-2 text-sm focus:ring-1"></div>
+                            <div><label class="block text-xs font-bold mb-1">Kelas</label><input type="text" v-model="settings.kelas" class="w-full border rounded p-2 text-sm focus:ring-1"></div>
+                            <div><label class="block text-xs font-bold mb-1 text-amber-600">Batas KKM Global</label><input type="number" v-model.number="settings.kkm" class="w-full border-2 border-amber-300 rounded p-2 text-sm font-bold bg-amber-50"></div>
+                        </div>
+                        <div class="bg-slate-50 p-3 rounded border">
+                            <label class="block text-xs font-bold mb-1">Kepala Sekolah</label>
+                            <input type="text" v-model="settings.kepsek" placeholder="Nama Kepsek" class="w-full border rounded p-2 text-sm mb-2 focus:ring-1">
+                            <input type="text" v-model="settings.nipKepsek" placeholder="NIP Kepsek" class="w-full border rounded p-2 text-sm focus:ring-1">
+                        </div>
+                        <div class="bg-slate-50 p-3 rounded border">
+                            <label class="block text-xs font-bold mb-1">Guru Kelas</label>
+                            <input type="text" v-model="settings.guru" placeholder="Nama Guru" class="w-full border rounded p-2 text-sm mb-2 focus:ring-1">
+                            <input type="text" v-model="settings.nipGuru" placeholder="NIP Guru" class="w-full border rounded p-2 text-sm focus:ring-1">
+                        </div>
+                        <div><label class="block text-xs font-bold mb-1">Tempat, Tanggal Laporan</label><input type="text" v-model="settings.tglLaporan" class="w-full border rounded p-2 text-sm focus:ring-1"></div>
+                    </div>
+                </div>
+
+                <div class="border-t pt-6 space-y-4">
+                    <h3 class="text-sm font-bold text-blue-600 border-b pb-2 uppercase"><i class="fa-solid fa-database mr-2"></i>Database Online (Google Spreadsheet)</h3>
+                    <p class="text-xs text-slate-500">Status: <b :class="conn.url ? 'text-emerald-600' : 'text-slate-500'">{{ conn.url ? 'Terhubung' : 'Mode lokal (data hanya di perangkat ini)' }}</b><span v-if="sync.lastSync"> &bull; Sinkron terakhir {{ lastSyncText }}</span></p>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div><label class="block text-xs font-bold mb-1">URL Web App (Apps Script)</label><input type="text" v-model="connForm.url" placeholder="https://script.google.com/macros/s/.../exec" class="w-full border rounded p-2 text-sm focus:ring-1 focus:ring-blue-500"></div>
+                        <div><label class="block text-xs font-bold mb-1">Kata Sandi</label><input type="password" v-model="connForm.pin" class="w-full border rounded p-2 text-sm focus:ring-1 focus:ring-blue-500"></div>
+                    </div>
+                    <p v-if="connForm.err" class="text-xs text-rose-600 font-bold">{{ connForm.err }}</p>
+                    <div class="flex flex-wrap gap-2">
+                        <button @click="connect" :disabled="connForm.busy" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded"><i class="fa-solid fa-plug mr-1"></i>{{ connForm.busy ? 'Menghubungkan...' : 'Simpan & Hubungkan' }}</button>
+                        <button @click="pullAll" :disabled="!conn.url" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 disabled:opacity-40 text-slate-700 text-xs font-bold rounded border"><i class="fa-solid fa-cloud-arrow-down mr-1"></i>Muat Ulang dari Spreadsheet</button>
+                        <button @click="pushAll" :disabled="!conn.url" class="px-4 py-2 bg-amber-50 hover:bg-amber-100 disabled:opacity-40 text-amber-700 text-xs font-bold rounded border border-amber-300"><i class="fa-solid fa-cloud-arrow-up mr-1"></i>Kirim Semua Data ke Spreadsheet</button>
+                        <button @click="disconnect" :disabled="!conn.url" class="px-4 py-2 bg-rose-50 hover:bg-rose-100 disabled:opacity-40 text-rose-700 text-xs font-bold rounded border border-rose-200"><i class="fa-solid fa-link-slash mr-1"></i>Putuskan</button>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <!-- Layar Sambung Database -->
+    <div v-if="showConnect" class="fixed inset-0 z-50 bg-slate-900/90 flex items-center justify-center p-4 no-print">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-md p-6 space-y-4">
+            <div class="text-center">
+                <i class="fa-solid fa-school text-4xl text-blue-600"></i>
+                <h2 class="text-lg font-bold mt-2">SDN 4 Bandungsari</h2>
+                <p class="text-xs text-slate-500">Hubungkan ke database Google Spreadsheet agar data bisa dibuka dari mana saja.</p>
+            </div>
+            <div><label class="block text-xs font-bold mb-1">URL Web App (Apps Script)</label><input type="text" v-model="connForm.url" placeholder="https://script.google.com/macros/s/.../exec" class="w-full border rounded p-2 text-sm focus:ring-1 focus:ring-blue-500"></div>
+            <div><label class="block text-xs font-bold mb-1">Kata Sandi</label><input type="password" v-model="connForm.pin" @keyup.enter="connect" class="w-full border rounded p-2 text-sm focus:ring-1 focus:ring-blue-500"></div>
+            <p v-if="connForm.err" class="text-xs text-rose-600 font-bold">{{ connForm.err }}</p>
+            <button @click="connect" :disabled="connForm.busy" class="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-lg"><i :class="connForm.busy ? 'fa-solid fa-spinner fa-spin mr-1' : 'fa-solid fa-plug mr-1'"></i>{{ connForm.busy ? 'Menghubungkan...' : 'Hubungkan' }}</button>
+            <button @click="useOffline" class="w-full text-xs text-slate-500 hover:text-slate-800 underline">Pakai mode lokal dulu (tanpa database online)</button>
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div v-if="toast.show" class="fixed bottom-6 right-6 px-6 py-3 rounded-lg shadow-xl text-white font-bold transition-all z-50 flex items-center" :class="toast.bg">
+        <i class="fa-solid fa-circle-check mr-2"></i> {{ toast.msg }}
+    </div>
+
+</div>
+
+<script>
+    const { createApp, ref, reactive, computed, watch, nextTick, onMounted } = Vue;
+
+    createApp({
+        setup() {
+            const activeTab = ref('dashboard');
+            const searchSiswa = ref('');
+            const printZoom = ref(0.85);
+            const toast = ref({ show: false, msg: '', bg: 'bg-emerald-600' });
+
+            const menus = [
+                { id: 'dashboard', title: 'Dashboard', icon: 'fa-chart-pie' },
+                { id: 'siswa', title: 'Data Siswa', icon: 'fa-users' },
+                { id: 'pelajaran', title: 'Input Pelajaran', icon: 'fa-book' },
+                { id: 'analisis', title: 'Analisis Nilai', icon: 'fa-list-check' },
+                { id: 'daftar', title: 'Daftar Nilai (Rekap)', icon: 'fa-clipboard-list' },
+                { id: 'cetak', title: 'Cetak & Unduh', icon: 'fa-print' },
+                { id: 'pengaturan', title: 'Pengaturan', icon: 'fa-gear' }
+            ];
+
+            const currentMenu = computed(() => menus.find(m => m.id === activeTab.value));
+
+            const getLocal = (key, def) => { try { return JSON.parse(localStorage.getItem(key)) || def; } catch(e) { return def; } };
+            
+            const settings = reactive(getLocal('edunilai_settings', {
+                kop1: 'Pemerintah Kabupaten Grobogan',
+                kop2: 'SD NEGERI 4 BANDUNGSARI',
+                kop3: 'Jl.K.Basyarudin No 35 Rt 01 Rw 03 Bandungsari, Kec. Ngaringan 58193',
+                kop4: 'Pos-el: sdnbandungsari4@gmail.com | NPSN: 20313623 | NSS: 101031509032',
+                logoKiri: '', logoKanan: '',
+                tp: '2026/2027', semester: '1 (Ganjil)', kelas: 'VI', kkm: 70,
+                kepsek: 'Nama Kepsek, S.Pd', nipKepsek: '1980...',
+                guru: 'Nama Guru, S.Pd', nipGuru: '1990...',
+                tglLaporan: 'Bandungsari, ' + new Date().toLocaleDateString('id-ID', {day: 'numeric', month: 'long', year: 'numeric'}),
+                paper: 'A4', orientation: 'portrait', margin: 1.5
+            }));
+
+            const siswa = ref(getLocal('edunilai_siswa', []));
+            const mapel = ref(getLocal('edunilai_mapel', []));
+            const analisis = ref(getLocal('edunilai_analisis', {}));
+            const daftarNilai = ref(getLocal('edunilai_daftar', {}));
+
+
+            const showToast = (msg, isErr=false) => {
+                toast.value = { show: true, msg, bg: isErr ? 'bg-rose-600' : 'bg-emerald-600' };
+                setTimeout(() => toast.value.show = false, 3000);
+            };
+
+            // =====================================================================
+            //  DATABASE ONLINE (Google Spreadsheet via Apps Script)
+            // =====================================================================
+            // Opsional: isi URL Web App di bawah agar semua perangkat otomatis terhubung
+            // (pengguna tinggal memasukkan kata sandi sekali).
+            const DEFAULT_API_URL = '';
+            const API_KEY = 'edunilai_api';
+            const LS = { settings: 'edunilai_settings', siswa: 'edunilai_siswa', mapel: 'edunilai_mapel', analisis: 'edunilai_analisis', daftar: 'edunilai_daftar' };
+
+            const conn = reactive(Object.assign({ url: DEFAULT_API_URL, pin: '' }, getLocal(API_KEY, {})));
+            if (!conn.url) conn.url = DEFAULT_API_URL;
+            const sync = reactive({ status: conn.url ? 'loading' : 'offline', lastSync: null, error: '' });
+            const connForm = reactive({ url: conn.url, pin: conn.pin, busy: false, err: '' });
+            const showConnect = ref(!conn.url || !conn.pin);
+            const sidebarOpen = ref(false);
+
+            let applying = false, saving = false, saveTimer = null, retryTimer = null;
+            const dirty = new Set();
+            let known = {};
+
+            const syncInfo = computed(() => ({
+                offline: { icon: 'fa-solid fa-cloud text-slate-400', text: 'Mode lokal (belum terhubung)' },
+                loading: { icon: 'fa-solid fa-spinner fa-spin text-blue-500', text: 'Memuat dari Spreadsheet...' },
+                pending: { icon: 'fa-solid fa-pen text-amber-500', text: 'Menunggu disimpan...' },
+                saving:  { icon: 'fa-solid fa-cloud-arrow-up fa-beat text-blue-500', text: 'Menyimpan...' },
+                saved:   { icon: 'fa-solid fa-cloud-arrow-up text-emerald-500', text: 'Tersimpan di Google Sheets' },
+                error:   { icon: 'fa-solid fa-triangle-exclamation text-rose-500', text: 'Gagal simpan, mencoba lagi...' }
+            }[sync.status]));
+            const lastSyncText = computed(() => sync.lastSync ? sync.lastSync.toLocaleTimeString('id-ID') : '');
+
+            const callApi = async (payload) => {
+                const ctrl = new AbortController();
+                const t = setTimeout(() => ctrl.abort(), 40000);
+                try {
+                    const res = await fetch(conn.url, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                        body: JSON.stringify({ ...payload, pin: conn.pin }),
+                        signal: ctrl.signal
+                    });
+                    const json = await res.json();
+                    if (!json.ok) { const err = new Error(json.error || 'Server menolak permintaan'); err.code = json.code; throw err; }
+                    return json;
+                } catch (e) {
+                    if (e.name === 'AbortError') throw new Error('Waktu habis, koneksi lambat');
+                    if (e instanceof TypeError || e instanceof SyntaxError) throw new Error('Tidak bisa menjangkau server. Cek URL Web App & akses "Siapa saja".');
+                    throw e;
+                } finally { clearTimeout(t); }
+            };
+
+            const serialize = (name) => {
+                if (name === 'settings') return JSON.parse(JSON.stringify(settings));
+                if (name === 'siswa') return JSON.parse(JSON.stringify(siswa.value));
+                if (name === 'mapel') return JSON.parse(JSON.stringify(mapel.value));
+                const sIds = new Set(siswa.value.map(s => s.id));
+                const mIds = new Set(mapel.value.map(m => m.id));
+                const tIds = new Set(mapel.value.flatMap(m => m.materi.map(t => t.id)));
+                const empty = v => v === null || v === undefined || v === '';
+                if (name === 'analisis') {
+                    return Object.entries(analisis.value).map(([key, d]) => {
+                        const m = key.match(/^(MP_\d+)_(MT_\d+)_(.+)$/);
+                        if (!m || !d || (empty(d.nh) && empty(d.rp))) return null;
+                        if (!mIds.has(m[1]) || !tIds.has(m[2]) || !sIds.has(m[3])) return null;
+                        return { mapelId: m[1], materiId: m[2], siswaId: m[3], nh: d.nh, rp: d.rp };
+                    }).filter(Boolean);
+                }
+                if (name === 'daftar') {
+                    return Object.entries(daftarNilai.value).map(([key, d]) => {
+                        const m = key.match(/^(MP_\d+)_(.+)$/);
+                        if (!m || !d) return null;
+                        if (!mIds.has(m[1]) || !sIds.has(m[2])) return null;
+                        if (['nh1','nh2','nh3','nh4','uts','uas'].every(k => empty(d[k]))) return null;
+                        return { mapelId: m[1], siswaId: m[2], nh1: d.nh1, nh2: d.nh2, nh3: d.nh3, nh4: d.nh4, uts: d.uts, uas: d.uas };
+                    }).filter(Boolean);
+                }
+            };
+
+            const applyRemote = async (data) => {
+                applying = true;
+                const n = v => (v === null || v === undefined || v === '') ? null : Number(v);
+                if (data.settings && Object.keys(data.settings).length) {
+                    Object.assign(settings, data.settings);
+                    settings.kkm = Number(settings.kkm) || 70;
+                }
+                siswa.value = (data.siswa || []).map(s => ({ id: String(s.id), nis: String(s.nis ?? ''), nama: String(s.nama ?? '') }));
+                mapel.value = data.mapel || [];
+                const an = {};
+                (data.analisis || []).forEach(r => { an[`${r.mapelId}_${r.materiId}_${r.siswaId}`] = { nh: n(r.nh), rp: n(r.rp) }; });
+                analisis.value = an;
+                const dn = {};
+                (data.daftar || []).forEach(r => { dn[`${r.mapelId}_${r.siswaId}`] = { nh1: n(r.nh1), nh2: n(r.nh2), nh3: n(r.nh3), nh4: n(r.nh4), uts: n(r.uts), uas: n(r.uas) }; });
+                daftarNilai.value = dn;
+                await nextTick();
+                applying = false;
+            };
+
+            const flush = async () => {
+                if (!conn.url || saving || !dirty.size || sync.status === 'loading') return;
+                clearTimeout(retryTimer);
+                saving = true; sync.status = 'saving';
+                const names = [...dirty]; dirty.clear();
+                const collections = {};
+                names.forEach(nm => collections[nm] = serialize(nm));
+                try {
+                    const r = await callApi({ action: 'save', collections });
+                    Object.assign(known, r.updated || {});
+                    sync.lastSync = new Date();
+                    sync.status = dirty.size ? 'pending' : 'saved';
+                } catch (e) {
+                    names.forEach(nm => dirty.add(nm));
+                    sync.status = 'error'; sync.error = e.message;
+                    if (e.code === 'AUTH') { showConnect.value = true; connForm.err = 'Kata sandi ditolak server. Masukkan ulang.'; }
+                    else retryTimer = setTimeout(flush, 10000);
+                } finally {
+                    saving = false;
+                    if (dirty.size && sync.status !== 'error') { clearTimeout(saveTimer); saveTimer = setTimeout(flush, 500); }
+                }
+            };
+
+            const markDirty = (name) => {
+                dirty.add(name);
+                if (!conn.url || sync.status === 'loading') return;
+                if (sync.status !== 'saving') sync.status = 'pending';
+                clearTimeout(saveTimer);
+                saveTimer = setTimeout(flush, 1500);
+            };
+
+            const track = (name, source) => watch(source, (val) => {
+                try { localStorage.setItem(LS[name], JSON.stringify(val)); } catch (e) {}
+                if (!applying) markDirty(name);
+            }, { deep: true });
+            track('settings', settings); track('siswa', siswa); track('mapel', mapel);
+            track('analisis', analisis); track('daftar', daftarNilai);
+
+            const loadRemote = async () => {
+                sync.status = 'loading';
+                const r = await callApi({ action: 'load' });
+                known = r.updated || {};
+                if (r.empty) {
+                    // database masih kosong: unggah data yang ada di perangkat ini
+                    Object.keys(LS).forEach(nm => dirty.add(nm));
+                    sync.status = 'pending';
+                    await flush();
+                    if (sync.status === 'saved') showToast('Database kosong, data perangkat ini diunggah ke Spreadsheet');
+                    return;
+                }
+                await applyRemote(r.data);
+                sync.lastSync = new Date(); sync.status = 'saved'; sync.error = '';
+            };
+
+            const handleLoadError = (e) => {
+                sync.status = 'error'; sync.error = e.message;
+                if (e.code === 'AUTH') { showConnect.value = true; connForm.err = 'Kata sandi salah.'; sync.status = 'offline'; }
+                else showToast('Gagal memuat: ' + e.message + ' (memakai data cadangan di perangkat)', true);
+            };
+
+            const connect = async () => {
+                connForm.err = '';
+                const url = (connForm.url || '').trim();
+                if (!/^https:\/\/script\.google(usercontent)?\.com\//.test(url)) { connForm.err = 'URL tidak valid. Harus diawali https://script.google.com/...'; return; }
+                if (!connForm.pin) { connForm.err = 'Kata sandi wajib diisi.'; return; }
+                connForm.busy = true;
+                const prev = { url: conn.url, pin: conn.pin };
+                conn.url = url; conn.pin = connForm.pin;
+                try {
+                    await loadRemote();
+                    localStorage.setItem(API_KEY, JSON.stringify({ url: conn.url, pin: conn.pin }));
+                    showConnect.value = false;
+                    showToast('Terhubung ke Google Spreadsheet');
+                } catch (e) {
+                    conn.url = prev.url; conn.pin = prev.pin;
+                    sync.status = conn.url ? 'error' : 'offline';
+                    connForm.err = e.code === 'AUTH' ? 'Kata sandi salah.' : 'Gagal terhubung: ' + e.message;
+                } finally { connForm.busy = false; }
+            };
+
+            const useOffline = () => { conn.url = ''; sync.status = 'offline'; showConnect.value = false; };
+            const disconnect = () => {
+                if (!confirm('Putuskan koneksi? Data tetap aman di Spreadsheet, aplikasi beralih ke mode lokal.')) return;
+                localStorage.removeItem(API_KEY);
+                conn.url = ''; conn.pin = ''; connForm.pin = '';
+                sync.status = 'offline'; showToast('Koneksi diputus');
+            };
+            const pullAll = async () => {
+                if (dirty.size && !confirm('Ada perubahan yang belum tersimpan. Tetap muat ulang dan timpa?')) return;
+                dirty.clear();
+                try { await loadRemote(); showToast('Data dimuat ulang dari Spreadsheet'); } catch (e) { handleLoadError(e); }
+            };
+            const pushAll = async () => {
+                if (!confirm('Timpa SEMUA data di Spreadsheet dengan data di layar ini?')) return;
+                Object.keys(LS).forEach(nm => dirty.add(nm));
+                sync.status = 'pending';
+                await flush();
+                if (sync.status === 'saved') showToast('Semua data terkirim ke Spreadsheet');
+            };
+            const syncNow = () => {
+                if (!conn.url) { showConnect.value = true; return; }
+                if (dirty.size) flush(); else pullAll();
+            };
+
+            // deteksi perubahan dari perangkat lain
+            const checkRemote = async () => {
+                if (!conn.url || showConnect.value || saving || dirty.size || sync.status === 'loading' || document.hidden) return;
+                try {
+                    const r = await callApi({ action: 'ping' });
+                    const u = r.updated || {};
+                    if (Object.keys(u).some(k => u[k] !== known[k]) && !dirty.size && !saving) await loadRemote();
+                } catch (e) { /* abaikan, coba lagi nanti */ }
+            };
+            setInterval(checkRemote, 45000);
+            document.addEventListener('visibilitychange', () => { if (!document.hidden) checkRemote(); });
+            window.addEventListener('online', () => flush());
+            window.addEventListener('beforeunload', (e) => { if (dirty.size) { e.preventDefault(); e.returnValue = ''; } });
+
+            onMounted(async () => {
+                if (conn.url && conn.pin) { try { await loadRemote(); } catch (e) { handleLoadError(e); } }
+                else if (conn.url && !conn.pin) { sync.status = 'offline'; showConnect.value = true; }
+            });
+
+            const filteredSiswa = computed(() => {
+                if(!searchSiswa.value) return siswa.value;
+                const q = searchSiswa.value.toLowerCase();
+                return siswa.value.filter(s => s.nama.toLowerCase().includes(q) || s.nis.toLowerCase().includes(q));
+            });
+            const addSiswa = () => siswa.value.push({ id: Date.now().toString(), nis: '', nama: 'SISWA BARU' });
+            const hapusSiswa = (id) => { if(confirm('Hapus siswa ini?')) siswa.value = siswa.value.filter(s => s.id !== id); };
+            const importSiswa = (e) => {
+                const file = e.target.files[0]; if(!file) return;
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    try {
+                        const wb = XLSX.read(e.target.result, {type: 'array'});
+                        const data = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
+                        let count = 0;
+                        data.forEach(r => {
+                            const nama = r['Nama'] || r['NAMA'] || r['Nama Siswa'];
+                            const nis = r['NIS'] || r['nis'] || '';
+                            if(nama) { siswa.value.push({ id: Date.now().toString() + count++, nis: String(nis), nama }); }
+                        });
+                        showToast(`Berhasil impor ${count} siswa`);
+                    } catch(err) { showToast('Gagal baca Excel', true); }
+                };
+                reader.readAsArrayBuffer(file); e.target.value = null;
+            };
+
+            const newMapel = ref(''); const selectedMapel = ref(null); const newMateri = ref('');
+            const addMapel = () => { if(newMapel.value) { mapel.value.push({ id: 'MP_'+Date.now(), nama: newMapel.value, materi: [] }); newMapel.value=''; }};
+            const hapusMapel = (id) => { if(confirm('Hapus Mapel? Semua materi di dalamnya akan hilang.')){ mapel.value = mapel.value.filter(m=>m.id!==id); if(selectedMapel.value?.id===id) selectedMapel.value=null; }};
+            const addMateri = () => { if(newMateri.value && selectedMapel.value) { const m = mapel.value.find(x=>x.id===selectedMapel.value.id); m.materi.push({id: 'MT_'+Date.now(), nama: newMateri.value}); newMateri.value=''; }};
+            const hapusMateri = (id) => { const m = mapel.value.find(x=>x.id===selectedMapel.value.id); m.materi = m.materi.filter(x=>x.id!==id); };
+
+            const anMapelId = ref(''); const anMateriId = ref('');
+            const currentMateriList = computed(() => mapel.value.find(m => m.id === anMapelId.value)?.materi || []);
+            
+            const listAnalisis = computed(() => {
+                if(!anMapelId.value || !anMateriId.value) return [];
+                return siswa.value.map(s => {
+                    const key = `${anMapelId.value}_${anMateriId.value}_${s.id}`;
+                    const d = analisis.value[key] || { nh: null, rp: null };
+                    let status = '-', tl = '-', na = null;
+                    if(d.nh !== null && d.nh !== '') {
+                        let nh = Number(d.nh); let rp = (d.rp !== null && d.rp !== '') ? Number(d.rp) : null;
+                        let kkm = settings.kkm;
+                        if(nh >= kkm) {
+                            status = 'Tuntas'; tl = 'Pengayaan';
+                            na = rp !== null ? Math.max(nh, rp) : nh;
+                        } else {
+                            status = 'Belum Tuntas'; tl = 'Remidi';
+                            na = rp !== null ? (rp >= kkm ? kkm : rp) : nh;
+                        }
+                    }
+                    return { siswaId: s.id, nis: s.nis, nama: s.nama, nh: d.nh, rp: d.rp, status, tl, na, key };
+                });
+            });
+
+            const calcAnalisis = (s) => {
+                if(s.nh === '' && s.rp === '') { delete analisis.value[s.key]; } 
+                else { analisis.value[s.key] = { nh: s.nh, rp: s.rp }; }
+            };
+
+            // UNDUH FORMAT SINKRONISASI & IMPOR NILAI ANALISIS EXCEL
+            const downloadAnalisisSyncTemplate = async () => {
+                const wb = new ExcelJS.Workbook();
+                const ws = wb.addWorksheet('Format Sinkronisasi Analisis');
+
+                // Kop Surat
+                ws.addRow([settings.kop1]); ws.mergeCells('A1:H1');
+                ws.addRow([settings.kop2]); ws.mergeCells('A2:H2');
+                ws.addRow([settings.kop3]); ws.mergeCells('A3:H3');
+                ws.addRow([settings.kop4]); ws.mergeCells('A4:H4');
+                ws.addRow([]);
+
+                ws.getRow(1).font = { name: 'Inter', size: 11, bold: true }; ws.getRow(1).alignment = { horizontal: 'center' };
+                ws.getRow(2).font = { name: 'Inter', size: 14, bold: true }; ws.getRow(2).alignment = { horizontal: 'center' };
+                ws.getRow(3).font = { name: 'Inter', size: 9 }; ws.getRow(3).alignment = { horizontal: 'center' };
+                ws.getRow(4).font = { name: 'Inter', size: 9 }; ws.getRow(4).alignment = { horizontal: 'center' };
+
+                ws.addRow(['FORMAT TEMPLATE & IMPOR ANALISIS HASIL ULANGAN HARIAN']); ws.mergeCells('A6:H6');
+                ws.getRow(6).font = { name: 'Inter', size: 12, bold: true, underline: true }; ws.getRow(6).alignment = { horizontal: 'center' };
+                ws.addRow([]);
+
+                const mapelObj = mapel.value.find(m => m.id === anMapelId.value);
+                const materiObj = currentMateriList.value.find(m => m.id === anMateriId.value);
+
+                ws.addRow(['Mata Pelajaran', ':', mapelObj ? mapelObj.nama : '-', 'Kelas / Semester', ':', `${settings.kelas} / ${settings.semester}`]);
+                ws.addRow(['Materi Pokok', ':', materiObj ? materiObj.nama : '-', 'Tahun Pelajaran', ':', settings.tp]);
+                ws.addRow(['KKM', ':', settings.kkm]);
+                ws.addRow([]);
+
+                for(let r=8; r<=10; r++) {
+                    ws.getRow(r).font = { name: 'Inter', size: 10 };
+                }
+
+                // Table Headers
+                const headers = ["No", "NIS", "Nama Siswa", "Nilai Harian", "Status", "Tindak Lanjut", "Remidi / Pengayaan", "Nilai Akhir"];
+                const headerRow = ws.addRow(headers);
+                headerRow.height = 25;
+                headerRow.font = { name: 'Inter', size: 10, bold: true, color: { argb: 'FFFFFF' } };
+                headerRow.eachCell(cell => {
+                    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: '1E293B' } };
+                    cell.alignment = { horizontal: 'center', vertical: 'middle' };
+                    cell.border = { top: {style:'thin', color:'CBD5E1'}, left: {style:'thin', color:'CBD5E1'}, bottom: {style:'thin', color:'CBD5E1'}, right: {style:'thin', color:'CBD5E1'} };
+                });
+
+                // Populate with student data
+                siswa.value.forEach((s, idx) => {
+                    const r = ws.addRow([idx+1, s.nis || '', s.nama, '', '', '', '', '']);
+                    r.height = 20;
+                    r.eachCell((cell, colIdx) => {
+                        cell.font = { name: 'Inter', size: 10 };
+                        cell.border = { top: {style:'thin', color:'CBD5E1'}, left: {style:'thin', color:'CBD5E1'}, bottom: {style:'thin', color:'CBD5E1'}, right: {style:'thin', color:'CBD5E1'} };
+                        if([1, 2, 4, 5, 6, 7, 8].includes(colIdx)) {
+                            cell.alignment = { horizontal: 'center', vertical: 'middle' };
+                        } else {
+                            cell.alignment = { horizontal: 'left', vertical: 'middle' };
+                        }
+                    });
+                });
+
+                // Save
+                const buf = await wb.xlsx.writeBuffer();
+                saveAs(new Blob([buf]), `Format_Sinkronisasi_Analisis_${mapelObj ? mapelObj.nama : 'Mapel'}.xlsx`);
+                showToast('Format Sinkronisasi Excel berhasil diunduh');
+            };
+
+            const importAnalisisExcel = (e) => {
+                const file = e.target.files[0]; if(!file) return;
+                const reader = new FileReader();
+                reader.onload = (ev) => {
+                    try {
+                        const wb = XLSX.read(ev.target.result, {type: 'array'});
+                        const data = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
+                        let count = 0;
+                        data.forEach(r => {
+                            const nis = String(r['NIS'] || r['nis'] || '').trim();
+                            const nhVal = r['Nilai Harian'] || r['Nilai'] || r['NILAI'] || r['NH'] || r['nh'];
+                            const rpVal = r['Remidi / Pengayaan'] || r['Remidi'] || r['rp'];
+                            if(nis && nhVal !== undefined && nhVal !== '') {
+                                const targetSiswa = siswa.value.find(s => String(s.nis).trim() === nis);
+                                if(targetSiswa) {
+                                    const key = `${anMapelId.value}_${anMateriId.value}_${targetSiswa.id}`;
+                                    if(!analisis.value[key]) analisis.value[key] = { nh: null, rp: null };
+                                    analisis.value[key].nh = Number(nhVal);
+                                    if(rpVal !== undefined && rpVal !== '') analisis.value[key].rp = Number(rpVal);
+                                    count++;
+                                }
+                            }
+                        });
+                        showToast(`Berhasil impor nilai analisis untuk ${count} siswa`);
+                    } catch(err) { showToast('Gagal membaca file Excel analisis', true); }
+                };
+                reader.readAsArrayBuffer(file); e.target.value = null;
+            };
+
+            const syncToDaftarNilai = () => {
+                if(!anMapelId.value || !anMateriId.value) return;
+                const mList = currentMateriList.value;
+                const mIndex = mList.findIndex(m => m.id === anMateriId.value);
+                if(mIndex > 3) return showToast('Hanya mendukung sinkronisasi hingga 4 Materi ke NH1-NH4', true);
+                
+                let synced = 0;
+                listAnalisis.value.forEach(s => {
+                    if(s.na !== null) {
+                        const dKey = `${anMapelId.value}_${s.siswaId}`;
+                        if(!daftarNilai.value[dKey]) daftarNilai.value[dKey] = { nh1:null, nh2:null, nh3:null, nh4:null, uts:null, uas:null };
+                        if(mIndex===0) daftarNilai.value[dKey].nh1 = s.na;
+                        if(mIndex===1) daftarNilai.value[dKey].nh2 = s.na;
+                        if(mIndex===2) daftarNilai.value[dKey].nh3 = s.na;
+                        if(mIndex===3) daftarNilai.value[dKey].nh4 = s.na;
+                        synced++;
+                    }
+                });
+                showToast(`Berhasil sinkron ${synced} nilai ke NH${mIndex+1}`);
+            };
+
+            const dnMapelId = ref('');
+            const listDaftarNilai = computed(() => {
+                if(!dnMapelId.value) return [];
+                return siswa.value.map(s => {
+                    const key = `${dnMapelId.value}_${s.id}`;
+                    const d = daftarNilai.value[key] || { nh1:null, nh2:null, nh3:null, nh4:null, uts:null, uas:null };
+                    
+                    let nhArr = [d.nh1, d.nh2, d.nh3, d.nh4].filter(x => x !== null && x !== '');
+                    let rataNh = null;
+                    if(nhArr.length > 0) rataNh = Math.round(nhArr.reduce((a,b)=>a+Number(b),0) / nhArr.length);
+                    
+                    let na = null;
+                    let comp = [];
+                    if(rataNh !== null) comp.push(rataNh);
+                    if(d.uts !== null && d.uts !== '') comp.push(Number(d.uts));
+                    if(d.uas !== null && d.uas !== '') comp.push(Number(d.uas));
+                    
+                    if(comp.length > 0) na = Math.round(comp.reduce((a,b)=>a+b,0) / comp.length);
+
+                    return { siswaId: s.id, nis: s.nis, nama: s.nama, ...d, rataNh, na, key };
+                });
+            });
+
+            const calcDaftar = (s) => {
+                daftarNilai.value[s.key] = { nh1: s.nh1, nh2: s.nh2, nh3: s.nh3, nh4: s.nh4, uts: s.uts, uas: s.uas };
+            };
+
+            const printType = ref('analisis'); const printMapelId = ref(''); const printMateriId = ref('');
+            const showMarginSettings = ref(false);
+            const getMapelName = (id) => mapel.value.find(m=>m.id===id)?.nama || '-';
+            const getMateriName = (mapelId, matId) => { const m=mapel.value.find(m=>m.id===mapelId); return m?.materi.find(x=>x.id===matId)?.nama || '-'; };
+            
+            const printDataAnalisis = computed(() => {
+                if(printType.value !== 'analisis' || !printMapelId.value || !printMateriId.value) return [];
+                return siswa.value.map(s => {
+                    const d = analisis.value[`${printMapelId.value}_${printMateriId.value}_${s.id}`];
+                    if(!d || (d.nh === null || d.nh === '')) return null;
+                    let nh = Number(d.nh), rp = d.rp !== null && d.rp !== '' ? Number(d.rp) : null;
+                    let tuntas = nh >= settings.kkm, na = tuntas ? (rp !== null ? Math.max(nh,rp) : nh) : (rp !== null ? Math.min(Math.max(nh,rp), settings.kkm) : nh);
+                    return { nis: s.nis, nama: s.nama, nh, status: tuntas?'Tuntas':'Belum', tl: tuntas?'Pengayaan':'Remidi', rp: rp||'-', na };
+                }).filter(x=>x);
+            });
+
+            const printStats = computed(() => {
+                const d = printDataAnalisis.value; if(d.length===0) return {rata:0, tuntas:0, belum:0, persen:0};
+                let tuntas = d.filter(x=>x.status==='Tuntas').length;
+                return {
+                    rata: Math.round(d.reduce((a,b)=>a+b.na,0)/d.length),
+                    tuntas, belum: d.length - tuntas, persen: Math.round((tuntas/d.length)*100)
+                };
+            });
+
+            const printDataDaftar = computed(() => {
+                if(printType.value !== 'daftar' || !printMapelId.value) return [];
+                return siswa.value.map(s => {
+                    const d = daftarNilai.value[`${printMapelId.value}_${s.id}`];
+                    if(!d) return null;
+                    let nhArr = [d.nh1, d.nh2, d.nh3, d.nh4].filter(x => x !== null && x !== '');
+                    if(nhArr.length===0 && !d.uts && !d.uas) return null;
+                    let rataNh = nhArr.length > 0 ? Math.round(nhArr.reduce((a,b)=>a+Number(b),0)/nhArr.length) : '-';
+                    let comp = [];
+                    if(rataNh !== '-') comp.push(rataNh);
+                    if(d.uts) comp.push(Number(d.uts)); if(d.uas) comp.push(Number(d.uas));
+                    let na = comp.length>0 ? Math.round(comp.reduce((a,b)=>a+b,0)/comp.length) : '-';
+                    return { nis:s.nis, nama:s.nama, nh1:d.nh1||'-', nh2:d.nh2||'-', nh3:d.nh3||'-', nh4:d.nh4||'-', rataNh, uts:d.uts||'-', uas:d.uas||'-', na };
+                }).filter(x=>x);
+            });
+
+            const printPreviewStyle = computed(() => {
+                let w = settings.paper === 'A4' ? '210mm' : '215.9mm'; 
+                let h = settings.paper === 'A4' ? '297mm' : '330mm';
+                if(settings.orientation === 'landscape') { let temp = w; w = h; h = temp; }
+                return { width: w, minHeight: h, padding: `${settings.margin}cm` };
+            });
+
+            const printWrapperStyle = computed(() => {
+                document.documentElement.style.setProperty('--print-size', settings.paper === 'A4' ? 'A4' : 'legal');
+                document.documentElement.style.setProperty('--print-orientation', settings.orientation);
+                document.documentElement.style.setProperty('--print-margin', `${settings.margin}cm`);
+                return {};
+            });
+
+            const doSettings = () => showMarginSettings.value = !showMarginSettings.value;
+            const applyPrintSettings = () => showMarginSettings.value = false;
+            const doPrint = () => window.print();
+
+            const exportPDF = () => {
+                const el = document.getElementById('print-area').querySelector('.a4-preview');
+                const origTransform = el.style.transform;
+                el.style.transform = 'none';
+                
+                let w = settings.paper === 'A4' ? 'a4' : 'legal';
+                let m = Number(settings.margin) * 10;
+                
+                const opt = {
+                    margin: m, filename: `Laporan_${printType.value}_SDN4Bandungsari.pdf`,
+                    image: { type: 'jpeg', quality: 0.98 },
+                    html2canvas: { scale: 2, useCORS: true },
+                    jsPDF: { unit: 'mm', format: w, orientation: settings.orientation },
+                    pagebreak: { mode: ['css', 'legacy'], avoid: ['tr', '.avoid-page-break'] }
+                };
+                
+                showToast('Memproses file PDF...');
+                html2pdf().set(opt).from(el).save().then(()=>{
+                    el.style.transform = origTransform; 
+                    showToast('PDF Berhasil Diunduh');
+                });
+            };
+
+            // EXCEL EKSPOR PERSIS DENGAN CETAK / PREVIEW (KOP, LOGO TEXT, DATA, ANALISIS, TTD)
+            const exportExcel = async () => {
+                showToast('Membuat file Excel laporan persis preview...');
+                const wb = new ExcelJS.Workbook(); 
+                const ws = wb.addWorksheet('Laporan Penilaian');
+                ws.views = [{ showGridLines: true }];
+
+                // Kop Surat
+                ws.addRow([settings.kop1]); ws.mergeCells('A1:H1');
+                ws.addRow([settings.kop2]); ws.mergeCells('A2:H2');
+                ws.addRow([settings.kop3]); ws.mergeCells('A3:H3');
+                ws.addRow([settings.kop4]); ws.mergeCells('A4:H4');
+                ws.addRow([]); // Row 5
+
+                ws.getRow(1).font = { name: 'Inter', size: 11, bold: true }; ws.getRow(1).alignment = { horizontal: 'center' };
+                ws.getRow(2).font = { name: 'Inter', size: 14, bold: true }; ws.getRow(2).alignment = { horizontal: 'center' };
+                ws.getRow(3).font = { name: 'Inter', size: 9 }; ws.getRow(3).alignment = { horizontal: 'center' };
+                ws.getRow(4).font = { name: 'Inter', size: 9 }; ws.getRow(4).alignment = { horizontal: 'center' };
+
+                const judul = printType.value === 'analisis' ? 'LAPORAN ANALISIS HASIL ULANGAN HARIAN' : 'DAFTAR NILAI HASIL BELAJAR SISWA';
+                ws.addRow([judul]); ws.mergeCells('A6:H6');
+                ws.getRow(6).font = { name: 'Inter', size: 12, bold: true, underline: true }; ws.getRow(6).alignment = { horizontal: 'center' };
+                ws.addRow([]); // Row 7
+
+                // Info metadata
+                ws.addRow(['Mata Pelajaran', ':', getMapelName(printMapelId.value), '', 'Kelas / Semester', ':', `${settings.kelas} / ${settings.semester}`]);
+                if(printType.value === 'analisis') {
+                    ws.addRow(['Materi Pokok', ':', getMateriName(printMapelId.value, printMateriId.value), '', 'Tahun Pelajaran', ':', settings.tp]);
+                    ws.addRow(['KKM', ':', settings.kkm]);
+                } else {
+                    ws.addRow(['Tahun Pelajaran', ':', settings.tp, '', 'KKM', ':', settings.kkm]);
+                }
+                ws.addRow([]); // Spacing before table
+
+                for(let r=8; r<=10; r++) {
+                    ws.getRow(r).font = { name: 'Inter', size: 10 };
+                }
+
+                let startRowTable = 12;
+                if(printType.value === 'analisis') {
+                    const headers = ['No', 'NIS', 'Nama Siswa', 'Nilai Harian', 'Status', 'Tindak Lanjut', 'Remidi / Pengayaan', 'Nilai Akhir'];
+                    const hr = ws.addRow(headers);
+                    hr.height = 25;
+                    hr.font = { name: 'Inter', size: 10, bold: true, color: { argb: 'FFFFFF' } };
+                    hr.eachCell(cell => {
+                        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: '1E293B' } };
+                        cell.alignment = { horizontal: 'center', vertical: 'middle' };
+                        cell.border = { top: {style:'thin', color:'CBD5E1'}, left: {style:'thin', color:'CBD5E1'}, bottom: {style:'thin', color:'CBD5E1'}, right: {style:'thin', color:'CBD5E1'} };
+                    });
+
+                    printDataAnalisis.value.forEach((s, i) => {
+                        const r = ws.addRow([i+1, s.nis, s.nama, s.nh, s.status, s.tl, s.rp, s.na]);
+                        r.height = 20;
+                        r.eachCell((cell, colIdx) => {
+                            cell.font = { name: 'Inter', size: 10 };
+                            cell.border = { top: {style:'thin', color:'CBD5E1'}, left: {style:'thin', color:'CBD5E1'}, bottom: {style:'thin', color:'CBD5E1'}, right: {style:'thin', color:'CBD5E1'} };
+                            if([1, 2, 4, 5, 6, 7, 8].includes(colIdx)) {
+                                cell.alignment = { horizontal: 'center', vertical: 'middle' };
+                            } else {
+                                cell.alignment = { horizontal: 'left', vertical: 'middle' };
+                            }
+                            if(colIdx === 5) {
+                                cell.font = { name: 'Inter', size: 10, bold: true, color: { argb: s.status === 'Tuntas' ? '047857' : 'B91C1C' } };
+                            }
+                        });
+                    });
+                } else {
+                    const headers = ['No', 'NIS', 'Nama Siswa', 'NH 1', 'NH 2', 'NH 3', 'NH 4', 'Rata NH', 'UTS', 'UAS', 'Nilai Akhir'];
+                    const hr = ws.addRow(headers);
+                    hr.height = 25;
+                    hr.font = { name: 'Inter', size: 10, bold: true, color: { argb: 'FFFFFF' } };
+                    hr.eachCell(cell => {
+                        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: '1E293B' } };
+                        cell.alignment = { horizontal: 'center', vertical: 'middle' };
+                        cell.border = { top: {style:'thin', color:'CBD5E1'}, left: {style:'thin', color:'CBD5E1'}, bottom: {style:'thin', color:'CBD5E1'}, right: {style:'thin', color:'CBD5E1'} };
+                    });
+
+                    printDataDaftar.value.forEach((s, i) => {
+                        const r = ws.addRow([i+1, s.nis, s.nama, s.nh1, s.nh2, s.nh3, s.nh4, s.rataNh, s.uts, s.uas, s.na]);
+                        r.height = 20;
+                        r.eachCell((cell, colIdx) => {
+                            cell.font = { name: 'Inter', size: 10 };
+                            cell.border = { top: {style:'thin', color:'CBD5E1'}, left: {style:'thin', color:'CBD5E1'}, bottom: {style:'thin', color:'CBD5E1'}, right: {style:'thin', color:'CBD5E1' } };
+                            if(colIdx !== 3) {
+                                cell.alignment = { horizontal: 'center', vertical: 'middle' };
+                            } else {
+                                cell.alignment = { horizontal: 'left', vertical: 'middle' };
+                            }
+                        });
+                    });
+                }
+
+                // Add Signatures Block at the bottom
+                ws.addRow([]);
+                const sigRowStart = ws.rowCount + 2;
+                ws.getCell(`F${sigRowStart}`).value = settings.tglLaporan;
+                ws.getCell(`B${sigRowStart + 1}`).value = "Mengetahui,";
+                ws.getCell(`B${sigRowStart + 2}`).value = "Kepala Sekolah";
+                ws.getCell(`F${sigRowStart + 2}`).value = `Guru Kelas ${settings.kelas}`;
+
+                ws.getCell(`B${sigRowStart + 6}`).value = settings.kepsek;
+                ws.getCell(`B${sigRowStart + 7}`).value = "NIP. " + settings.nipKepsek;
+
+                ws.getCell(`F${sigRowStart + 6}`).value = settings.guru;
+                ws.getCell(`F${sigRowStart + 7}`).value = "NIP. " + settings.nipGuru;
+
+                // Styling signatures
+                ['B', 'F'].forEach(col => {
+                    for(let r=sigRowStart; r<=sigRowStart+7; r++) {
+                        const cell = ws.getCell(`${col}${r}`);
+                        cell.alignment = { horizontal: 'center' };
+                        if(r === sigRowStart + 6) {
+                            cell.font = { name: 'Inter', size: 10, bold: true, underline: true };
+                        } else {
+                            cell.font = { name: 'Inter', size: 10 };
+                        }
+                    }
+                });
+
+                const buf = await wb.xlsx.writeBuffer();
+                saveAs(new Blob([buf]), `Laporan_${printType.value}_SDN4Bandungsari.xlsx`);
+                showToast('Excel Berhasil Diunduh Persis Preview');
+            };
+
+            const exportDOCX = () => {
+                showToast('Membuat file DOCX...');
+                const el = document.getElementById('print-area').querySelector('.a4-preview').innerHTML;
+                const content = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>body { font-family: 'Times New Roman', serif; font-size: 12pt; color: #000; } table { border-collapse: collapse; width: 100%; margin-bottom: 15px; } th, td { border: 1px solid #000; padding: 5px; font-size: 11pt; } th { background-color: #f2f2f2; text-align: center; }</style></head><body>${el}</body></html>`;
+                const converted = htmlDocx.asBlob(content, { orientation: settings.orientation === 'landscape' ? 'landscape' : 'portrait' });
+                saveAs(converted, `Laporan_${printType.value}_SDN4Bandungsari.docx`);
+                showToast('DOCX Berhasil Diunduh');
+            };
+
+            const uploadLogo = (e, target) => {
+                const f = e.target.files[0]; if(!f) return;
+                const r = new FileReader();
+                r.onload = (ev) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        const sc = Math.min(1, 300 / Math.max(img.width, img.height));
+                        const c = document.createElement('canvas');
+                        c.width = Math.round(img.width * sc); c.height = Math.round(img.height * sc);
+                        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+                        settings[target] = c.toDataURL('image/png');
+                    };
+                    img.onerror = () => { settings[target] = ev.target.result; };
+                    img.src = ev.target.result;
+                };
+                r.readAsDataURL(f);
+            };
+
+            return {
+                menus, activeTab, currentMenu, toast, printZoom,
+                settings, siswa, mapel, analisis, daftarNilai, searchSiswa, filteredSiswa,
+                addSiswa, hapusSiswa, importSiswa,
+                newMapel, newMateri, selectedMapel, addMapel, hapusMapel, addMateri, hapusMateri,
+                anMapelId, anMateriId, currentMateriList, listAnalisis, calcAnalisis, downloadAnalisisSyncTemplate, importAnalisisExcel, syncToDaftarNilai,
+                dnMapelId, listDaftarNilai, calcDaftar,
+                printType, printMapelId, printMateriId, showMarginSettings, printPreviewStyle, printWrapperStyle,
+                printDataAnalisis, printDataDaftar, printStats, getMapelName, getMateriName,
+                doSettings, applyPrintSettings, doPrint, exportPDF, exportExcel, exportDOCX, uploadLogo,
+                conn, connForm, sync, syncInfo, lastSyncText, showConnect, sidebarOpen, connect, useOffline, disconnect, pullAll, pushAll, syncNow
+            };
+        }
+    }).mount('#app');
+</script>
+
+</body>
+</html>
