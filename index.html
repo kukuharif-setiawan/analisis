@@ -130,6 +130,7 @@
                     <input type="text" v-model="searchSiswa" placeholder="Cari Siswa..." class="px-4 py-2 border rounded-lg text-sm w-64 focus:ring-2 focus:ring-blue-500">
                     <div class="space-x-2">
                         <input type="file" ref="fileSiswa" @change="importSiswa" accept=".xlsx" class="hidden">
+                        <button @click="dlSiswa" class="px-4 py-2 bg-amber-600 text-white rounded-lg text-sm font-bold"><i class="fa-solid fa-download mr-2"></i>Template</button>
                         <button @click="$refs.fileSiswa.click()" class="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-bold"><i class="fa-solid fa-file-excel mr-2"></i>Impor Excel</button>
                         <button @click="addSiswa" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-bold"><i class="fa-solid fa-plus mr-2"></i>Tambah Siswa</button>
                     </div>
@@ -271,6 +272,7 @@
                             <option v-for="m in mapel" :value="m.id">{{ m.nama }}</option>
                         </select>
                     </div>
+                    <button @click="tplRekapMapel = dnMapelId || 'ALL'; activeTab = 'template'" class="mt-4 px-3 py-2 bg-amber-600 text-white rounded-lg text-xs font-bold"><i class="fa-solid fa-file-import mr-1"></i>Template & Impor Nilai</button>
                     <div class="text-xs text-slate-500 mt-4"><i class="fa-solid fa-info-circle text-blue-500 mr-1"></i> NH1-NH4 dapat diisi manual atau disinkronkan otomatis dari menu Analisis Nilai.</div>
                 </div>
                 
@@ -310,6 +312,50 @@
                 </div>
                 <div v-else class="text-center py-20 text-slate-400 bg-white rounded-xl border border-slate-200">
                     <i class="fa-solid fa-clipboard-list text-4xl mb-3"></i><br>Pilih Mata Pelajaran untuk melihat atau mengedit Daftar Nilai.
+                </div>
+            </div>
+
+            <!-- 5b. TEMPLATE & IMPOR -->
+            <div v-show="activeTab === 'template'" class="max-w-5xl mx-auto space-y-4">
+                <div class="bg-blue-50 border border-blue-200 text-blue-800 text-sm rounded-xl p-4">
+                    <b>Alur sinkron:</b> <b>1.</b> Unduh &amp; isi template Siswa, lalu impor &rarr; <b>2.</b> (opsional) Template Mapel &amp; Materi &rarr; <b>3.</b> Unduh template nilai (otomatis terisi NIS &amp; nama siswa yang sudah diimpor), isi nilainya, lalu impor.
+                    Data dicocokkan lewat <b>NIS</b> (atau nama jika NIS kosong), jadi impor ulang <b>tidak menggandakan</b> data dan nilai kosong tidak menimpa nilai lama.
+                </div>
+                <div v-if="importReport" class="bg-white border border-emerald-300 rounded-xl p-4 text-sm">
+                    <div class="flex justify-between"><b class="text-emerald-700"><i class="fa-solid fa-circle-check mr-1"></i>{{ importReport.title }}</b><button @click="importReport = null" class="text-slate-400 hover:text-rose-500"><i class="fa-solid fa-times"></i></button></div>
+                    <ul class="list-disc ml-5 mt-2 space-y-1 text-slate-700"><li v-for="l in importReport.lines">{{ l }}</li></ul>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-200 space-y-3">
+                        <h3 class="font-bold"><i class="fa-solid fa-users text-blue-600 mr-2"></i>1. Data Siswa</h3>
+                        <p class="text-xs text-slate-500">Kolom: No, NIS, Nama Siswa. Jika siswa sudah ada, template berisi data saat ini agar mudah diperbarui.</p>
+                        <input type="file" ref="fSis" @change="importSiswa" accept=".xlsx,.xls" class="hidden">
+                        <div class="flex gap-2"><button @click="dlSiswa" class="px-3 py-2 bg-amber-600 text-white rounded-lg text-sm font-bold"><i class="fa-solid fa-download mr-1"></i>Unduh Template</button><button @click="$refs.fSis.click()" class="px-3 py-2 bg-emerald-600 text-white rounded-lg text-sm font-bold"><i class="fa-solid fa-file-excel mr-1"></i>Impor Siswa</button></div>
+                    </div>
+                    <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-200 space-y-3">
+                        <h3 class="font-bold"><i class="fa-solid fa-book text-indigo-600 mr-2"></i>2. Mata Pelajaran &amp; Materi</h3>
+                        <p class="text-xs text-slate-500">Kolom: Mata Pelajaran, Materi. Mapel/materi yang belum ada dibuat otomatis, yang sudah ada dilewati.</p>
+                        <input type="file" ref="fMap" @change="impMapel" accept=".xlsx,.xls" class="hidden">
+                        <div class="flex gap-2"><button @click="dlMapel" class="px-3 py-2 bg-amber-600 text-white rounded-lg text-sm font-bold"><i class="fa-solid fa-download mr-1"></i>Unduh Template</button><button @click="$refs.fMap.click()" class="px-3 py-2 bg-emerald-600 text-white rounded-lg text-sm font-bold"><i class="fa-solid fa-file-excel mr-1"></i>Impor Mapel</button></div>
+                    </div>
+                    <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-200 space-y-3">
+                        <h3 class="font-bold"><i class="fa-solid fa-list-check text-rose-600 mr-2"></i>3. Nilai Harian per Materi</h3>
+                        <p class="text-xs text-slate-500">Kolom: No, NIS, Nama Siswa, Nilai Harian, Remidi / Pengayaan (0-100).</p>
+                        <div class="flex gap-2">
+                            <select v-model="tplMapelId" @change="tplMateriId = ''" class="px-2 py-2 border rounded-lg text-sm w-1/2 bg-blue-50"><option value="">-- Mapel --</option><option v-for="m in mapel" :value="m.id">{{ m.nama }}</option></select>
+                            <select v-model="tplMateriId" :disabled="!tplMapelId" class="px-2 py-2 border rounded-lg text-sm w-1/2 bg-blue-50"><option value="">-- Materi --</option><option v-for="mat in tplMateriList" :value="mat.id">{{ mat.nama }}</option></select>
+                        </div>
+                        <label class="flex items-center gap-2 text-xs text-slate-600"><input type="checkbox" v-model="autoSync"> Langsung sinkron ke Daftar Nilai (NH) setelah impor</label>
+                        <input type="file" ref="fNil" @change="impAnalisisTab" accept=".xlsx,.xls" class="hidden">
+                        <div class="flex gap-2"><button @click="dlNilai" class="px-3 py-2 bg-amber-600 text-white rounded-lg text-sm font-bold"><i class="fa-solid fa-download mr-1"></i>Unduh Template</button><button @click="$refs.fNil.click()" class="px-3 py-2 bg-emerald-600 text-white rounded-lg text-sm font-bold"><i class="fa-solid fa-file-excel mr-1"></i>Impor Nilai</button></div>
+                    </div>
+                    <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-200 space-y-3">
+                        <h3 class="font-bold"><i class="fa-solid fa-clipboard-list text-emerald-600 mr-2"></i>4. Rekap Nilai (NH1-NH4, UTS, UAS)</h3>
+                        <p class="text-xs text-slate-500">Satu mapel, atau semua mapel dalam satu file (1 sheet per mapel; nama sheet jangan diubah). Nilai Akhir dihitung otomatis.</p>
+                        <select v-model="tplRekapMapel" class="px-2 py-2 border rounded-lg text-sm w-full bg-emerald-50"><option value="ALL">Semua Mapel (1 file, banyak sheet)</option><option v-for="m in mapel" :value="m.id">{{ m.nama }}</option></select>
+                        <input type="file" ref="fRek" @change="impRekap" accept=".xlsx,.xls" class="hidden">
+                        <div class="flex gap-2"><button @click="dlRekap" class="px-3 py-2 bg-amber-600 text-white rounded-lg text-sm font-bold"><i class="fa-solid fa-download mr-1"></i>Unduh Template</button><button @click="$refs.fRek.click()" class="px-3 py-2 bg-emerald-600 text-white rounded-lg text-sm font-bold"><i class="fa-solid fa-file-excel mr-1"></i>Impor Rekap</button></div>
+                    </div>
                 </div>
             </div>
 
@@ -561,6 +607,7 @@
                 { id: 'pelajaran', title: 'Input Pelajaran', icon: 'fa-book' },
                 { id: 'analisis', title: 'Analisis Nilai', icon: 'fa-list-check' },
                 { id: 'daftar', title: 'Daftar Nilai (Rekap)', icon: 'fa-clipboard-list' },
+                { id: 'template', title: 'Template & Impor', icon: 'fa-file-import' },
                 { id: 'cetak', title: 'Cetak & Unduh', icon: 'fa-print' },
                 { id: 'pengaturan', title: 'Pengaturan', icon: 'fa-gear' }
             ];
@@ -819,25 +866,6 @@
             });
             const addSiswa = () => siswa.value.push({ id: Date.now().toString(), nis: '', nama: 'SISWA BARU' });
             const hapusSiswa = (id) => { if(confirm('Hapus siswa ini?')) siswa.value = siswa.value.filter(s => s.id !== id); };
-            const importSiswa = (e) => {
-                const file = e.target.files[0]; if(!file) return;
-                const reader = new FileReader();
-                reader.onload = (e) => {
-                    try {
-                        const wb = XLSX.read(e.target.result, {type: 'array'});
-                        const data = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
-                        let count = 0;
-                        data.forEach(r => {
-                            const nama = r['Nama'] || r['NAMA'] || r['Nama Siswa'];
-                            const nis = r['NIS'] || r['nis'] || '';
-                            if(nama) { siswa.value.push({ id: Date.now().toString() + count++, nis: String(nis), nama }); }
-                        });
-                        showToast(`Berhasil impor ${count} siswa`);
-                    } catch(err) { showToast('Gagal baca Excel', true); }
-                };
-                reader.readAsArrayBuffer(file); e.target.value = null;
-            };
-
             const newMapel = ref(''); const selectedMapel = ref(null); const newMateri = ref('');
             const addMapel = () => { if(newMapel.value) { mapel.value.push({ id: 'MP_'+Date.now(), nama: newMapel.value, materi: [] }); newMapel.value=''; }};
             const hapusMapel = (id) => { if(confirm('Hapus Mapel? Semua materi di dalamnya akan hilang.')){ mapel.value = mapel.value.filter(m=>m.id!==id); if(selectedMapel.value?.id===id) selectedMapel.value=null; }};
@@ -938,35 +966,6 @@
                 showToast('Format Sinkronisasi Excel berhasil diunduh');
             };
 
-            const importAnalisisExcel = (e) => {
-                const file = e.target.files[0]; if(!file) return;
-                const reader = new FileReader();
-                reader.onload = (ev) => {
-                    try {
-                        const wb = XLSX.read(ev.target.result, {type: 'array'});
-                        const data = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
-                        let count = 0;
-                        data.forEach(r => {
-                            const nis = String(r['NIS'] || r['nis'] || '').trim();
-                            const nhVal = r['Nilai Harian'] || r['Nilai'] || r['NILAI'] || r['NH'] || r['nh'];
-                            const rpVal = r['Remidi / Pengayaan'] || r['Remidi'] || r['rp'];
-                            if(nis && nhVal !== undefined && nhVal !== '') {
-                                const targetSiswa = siswa.value.find(s => String(s.nis).trim() === nis);
-                                if(targetSiswa) {
-                                    const key = `${anMapelId.value}_${anMateriId.value}_${targetSiswa.id}`;
-                                    if(!analisis.value[key]) analisis.value[key] = { nh: null, rp: null };
-                                    analisis.value[key].nh = Number(nhVal);
-                                    if(rpVal !== undefined && rpVal !== '') analisis.value[key].rp = Number(rpVal);
-                                    count++;
-                                }
-                            }
-                        });
-                        showToast(`Berhasil impor nilai analisis untuk ${count} siswa`);
-                    } catch(err) { showToast('Gagal membaca file Excel analisis', true); }
-                };
-                reader.readAsArrayBuffer(file); e.target.value = null;
-            };
-
             const syncToDaftarNilai = () => {
                 if(!anMapelId.value || !anMateriId.value) return;
                 const mList = currentMateriList.value;
@@ -1014,6 +1013,185 @@
             const calcDaftar = (s) => {
                 daftarNilai.value[s.key] = { nh1: s.nh1, nh2: s.nh2, nh3: s.nh3, nh4: s.nh4, uts: s.uts, uas: s.uas };
             };
+
+            // ===== TEMPLATE & IMPOR NILAI (SINKRON) =====
+            let seq = 0; const uid = () => Date.now().toString() + (seq++);
+            const importReport = ref(null);
+            const tplMapelId = ref(''), tplMateriId = ref(''), tplRekapMapel = ref('ALL'), autoSync = ref(true);
+            const tplMateriList = computed(() => mapel.value.find(m => m.id === tplMapelId.value)?.materi || []);
+            const norm = v => String(v ?? '').toUpperCase().replace(/\s+/g, ' ').trim();
+            const cleanNis = v => String(v ?? '').trim().replace(/\.0$/, '');
+            const san = v => norm(v).replace(/[\\\/?*\[\]:]/g, '-').substring(0, 31);
+            const toNum = v => { if (v === '' || v === null || v === undefined) return null; const n = Number(String(v).replace(',', '.')); return (isNaN(n) || n < 0 || n > 100) ? NaN : n; };
+            const report = (title, lines) => { importReport.value = { title, lines }; showToast(title + ' selesai'); };
+            const HEAD = /^(nis|nama( siswa)?)$/i;
+            const findSiswa = (nis, nama) => {
+                const n = cleanNis(nis);
+                if (n) { const a = siswa.value.find(s => cleanNis(s.nis) === n); if (a) return a; }
+                const b = nama ? siswa.value.find(s => norm(s.nama) === norm(nama)) : null;
+                return b && (!n || !cleanNis(b.nis)) ? b : null;
+            };
+            const readBook = (e, cb) => {
+                const f = e.target.files[0]; e.target.value = null; if (!f) return;
+                const r = new FileReader();
+                r.onload = ev => { try { cb(XLSX.read(ev.target.result, { type: 'array' })); } catch (err) { console.error(err); showToast('Gagal membaca file Excel', true); } };
+                r.readAsArrayBuffer(f);
+            };
+            // Cari baris judul kolom secara otomatis (kop/baris info di atas tabel diabaikan)
+            const table = (ws, re) => {
+                const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+                const hi = rows.findIndex(r => r.some(c => re.test(String(c).trim())));
+                if (hi < 0) return null;
+                return { head: rows[hi].map(c => String(c).toLowerCase().replace(/\s+/g, ' ').trim()), rows: rows.slice(hi + 1) };
+            };
+            const ci = (head, re) => head.findIndex(h => re.test(h));
+
+            const thin = { style: 'thin', color: { argb: 'FFCBD5E1' } }, box = { top: thin, left: thin, bottom: thin, right: thin };
+            const addSheet = (wb, name, title, info, headers, widths, data, color, left = [3]) => {
+                const ws = wb.addWorksheet(name.substring(0, 31).replace(/[\\\/?*\[\]:]/g, '-'));
+                ws.addRow([title]).font = { bold: true, size: 13 };
+                info.forEach(t => { ws.addRow([t]).font = { italic: true, size: 9, color: { argb: 'FF64748B' } }; });
+                ws.addRow([]);
+                const hr = ws.addRow(headers); hr.height = 26;
+                hr.eachCell(c => { c.font = { bold: true, color: { argb: 'FFFFFFFF' } }; c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: color } }; c.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true }; c.border = box; });
+                data.forEach(d => { const r = ws.addRow(d); r.eachCell({ includeEmpty: true }, (c, i) => { c.border = box; c.alignment = { horizontal: left.includes(i) ? 'left' : 'center', vertical: 'middle' }; }); });
+                widths.forEach((w, i) => { ws.getColumn(i + 1).width = w; });
+                ws.getColumn(2).numFmt = '@';
+                ws.views = [{ state: 'frozen', ySplit: hr.number }];
+                return ws;
+            };
+            const saveWb = async (wb, name) => { saveAs(new Blob([await wb.xlsx.writeBuffer()]), name); showToast('Template berhasil diunduh'); };
+
+            // --- Siswa ---
+            const dlSiswa = async () => {
+                const wb = new ExcelJS.Workbook();
+                const d = siswa.value.length ? siswa.value.map((s, i) => [i + 1, s.nis, s.nama]) : Array.from({ length: 40 }, (_, i) => [i + 1, '', '']);
+                addSheet(wb, 'Data Siswa', 'TEMPLATE DATA SISWA', ['Isi NIS & Nama Siswa mulai baris di bawah judul kolom. Jangan ubah judul kolom. Baris tanpa nama diabaikan.', 'Siswa dicocokkan dengan NIS (atau nama jika NIS kosong) sehingga impor ulang tidak menggandakan data.'], ['No', 'NIS', 'Nama Siswa'], [6, 20, 42], d, 'FF1E293B');
+                await saveWb(wb, 'Template_Data_Siswa.xlsx');
+            };
+            const importSiswa = e => readBook(e, wb => {
+                const t = table(wb.Sheets[wb.SheetNames[0]], HEAD);
+                if (!t) return showToast('Kolom "NIS" / "Nama Siswa" tidak ditemukan', true);
+                const iN = ci(t.head, /^nis$/), iM = ci(t.head, /^nama/);
+                let add = 0, upd = 0;
+                t.rows.forEach(r => {
+                    const nama = String(r[iM] ?? '').trim(), nis = iN >= 0 ? cleanNis(r[iN]) : '';
+                    if (!nama) return;
+                    const ex = findSiswa(nis, nama);
+                    if (ex) { if (nis) ex.nis = nis; ex.nama = nama; upd++; }
+                    else { siswa.value.push({ id: uid(), nis, nama }); add++; }
+                });
+                report('Impor Data Siswa', [`${add} siswa baru ditambahkan`, `${upd} siswa sudah ada dan diperbarui (tidak digandakan)`, `Total siswa sekarang: ${siswa.value.length}`]);
+            });
+
+            // --- Mapel & Materi ---
+            const dlMapel = async () => {
+                const wb = new ExcelJS.Workbook();
+                let d = mapel.value.flatMap(m => m.materi.length ? m.materi.map(t => [m.nama, t.nama]) : [[m.nama, '']]);
+                if (!d.length) d = Array.from({ length: 20 }, () => ['', '']);
+                addSheet(wb, 'Mapel & Materi', 'TEMPLATE MATA PELAJARAN & MATERI', ['Satu baris = satu materi. Tulis nama mapel yang sama di setiap baris materinya.'], ['Mata Pelajaran', 'Materi'], [30, 60], d, 'FF4338CA', [1, 2]);
+                await saveWb(wb, 'Template_Mapel_Materi.xlsx');
+            };
+            const impMapel = e => readBook(e, wb => {
+                const t = table(wb.Sheets[wb.SheetNames[0]], /^(mata ?pelajaran|mapel)$/i);
+                if (!t) return showToast('Kolom "Mata Pelajaran" tidak ditemukan', true);
+                const iP = ci(t.head, /^(mata ?pelajaran|mapel)$/), iT = ci(t.head, /materi/);
+                let nm = 0, nt = 0;
+                t.rows.forEach(r => {
+                    const mp = String(r[iP] ?? '').trim(), mt = iT >= 0 ? String(r[iT] ?? '').trim() : '';
+                    if (!mp) return;
+                    let m = mapel.value.find(x => norm(x.nama) === norm(mp));
+                    if (!m) { mapel.value.push({ id: 'MP_' + uid(), nama: mp, materi: [] }); m = mapel.value[mapel.value.length - 1]; nm++; }
+                    if (mt && !m.materi.some(x => norm(x.nama) === norm(mt))) { m.materi.push({ id: 'MT_' + uid(), nama: mt }); nt++; }
+                });
+                report('Impor Mapel & Materi', [`${nm} mata pelajaran baru`, `${nt} materi baru`]);
+            });
+
+            // --- Nilai Harian per materi ---
+            const dlNilai = async () => {
+                if (!siswa.value.length) return showToast('Isi / impor Data Siswa terlebih dahulu', true);
+                const m = mapel.value.find(x => x.id === tplMapelId.value), t = m?.materi.find(x => x.id === tplMateriId.value);
+                if (!m || !t) return showToast('Pilih Mata Pelajaran & Materi terlebih dahulu', true);
+                const wb = new ExcelJS.Workbook();
+                const d = siswa.value.map((s, i) => { const a = analisis.value[`${m.id}_${t.id}_${s.id}`] || {}; return [i + 1, s.nis, s.nama, a.nh ?? '', a.rp ?? '']; });
+                addSheet(wb, 'Nilai Harian', 'TEMPLATE IMPOR NILAI HARIAN', [`Mata Pelajaran: ${m.nama}`, `Materi: ${t.nama}`, `KKM: ${settings.kkm} | Isi nilai 0-100. Kolom Remidi/Pengayaan boleh kosong. Jangan ubah NIS, Nama, dan judul kolom.`], ['No', 'NIS', 'Nama Siswa', 'Nilai Harian', 'Remidi / Pengayaan'], [6, 20, 42, 14, 20], d, 'FF1D4ED8');
+                await saveWb(wb, `Template_Nilai_${m.nama}_${t.nama}.xlsx`.replace(/[\\\/?*:]/g, '-'));
+            };
+            const runImpAnalisis = (e, mId, tId, sync) => {
+                if (!mId.value || !tId.value) { e.target.value = null; return showToast('Pilih Mata Pelajaran & Materi terlebih dahulu', true); }
+                readBook(e, wb => {
+                    const t = table(wb.Sheets[wb.SheetNames[0]], HEAD);
+                    if (!t) return showToast('Kolom "NIS" / "Nama Siswa" tidak ditemukan', true);
+                    const iN = ci(t.head, /^nis$/), iM = ci(t.head, /^nama/), iH = ci(t.head, /^(nilai harian|nilai|nh)$/), iR = ci(t.head, /remidi|pengayaan|^rp$/);
+                    if (iH < 0) return showToast('Kolom "Nilai Harian" tidak ditemukan', true);
+                    let ok = 0, bad = 0; const nf = [];
+                    t.rows.forEach(r => {
+                        const nama = String(r[iM] ?? '').trim(), nis = iN >= 0 ? cleanNis(r[iN]) : '';
+                        if (!nama && !nis) return;
+                        const nh = toNum(r[iH]), rp = iR >= 0 ? toNum(r[iR]) : null;
+                        if (nh === null && rp === null) return;
+                        const s = findSiswa(nis, nama);
+                        if (!s) { nf.push(nama || nis); return; }
+                        if (Number.isNaN(nh) || Number.isNaN(rp)) { bad++; return; }
+                        const key = `${mId.value}_${tId.value}_${s.id}`, cur = analisis.value[key] || { nh: null, rp: null };
+                        analisis.value[key] = { nh: nh !== null ? nh : cur.nh, rp: rp !== null ? rp : cur.rp }; ok++;
+                    });
+                    const lines = [`${ok} nilai berhasil diimpor`];
+                    if (bad) lines.push(`${bad} baris dilewati: nilai bukan angka 0-100`);
+                    if (nf.length) lines.push(`${nf.length} siswa tidak ada di Data Siswa: ` + nf.slice(0, 8).join(', ') + (nf.length > 8 ? ', ...' : ''));
+                    if (sync.value && ok) {
+                        const idx = mapel.value.find(m => m.id === mId.value).materi.findIndex(m => m.id === tId.value);
+                        if (idx > 3) lines.push('Sinkron ke Daftar Nilai dilewati: hanya 4 materi pertama yang menjadi NH1-NH4');
+                        else { anMapelId.value = mId.value; anMateriId.value = tId.value; syncToDaftarNilai(); lines.push(`Nilai akhir disinkronkan ke Daftar Nilai (NH${idx + 1})`); }
+                    }
+                    report('Impor Nilai Harian', lines);
+                });
+            };
+            const importAnalisisExcel = e => runImpAnalisis(e, anMapelId, anMateriId, ref(false));
+            const impAnalisisTab = e => runImpAnalisis(e, tplMapelId, tplMateriId, autoSync);
+
+            // --- Rekap (NH1-NH4, UTS, UAS) ---
+            const REK = ['nh1', 'nh2', 'nh3', 'nh4', 'uts', 'uas'];
+            const dlRekap = async () => {
+                if (!siswa.value.length) return showToast('Isi / impor Data Siswa terlebih dahulu', true);
+                const list = tplRekapMapel.value === 'ALL' ? mapel.value : mapel.value.filter(m => m.id === tplRekapMapel.value);
+                if (!list.length) return showToast('Belum ada Mata Pelajaran', true);
+                const wb = new ExcelJS.Workbook();
+                list.forEach(m => {
+                    const d = siswa.value.map((s, i) => { const v = daftarNilai.value[`${m.id}_${s.id}`] || {}; return [i + 1, s.nis, s.nama, ...REK.map(k => v[k] ?? '')]; });
+                    addSheet(wb, m.nama, 'TEMPLATE IMPOR REKAP NILAI', [`Mata Pelajaran: ${m.nama}`, 'Isi NH1-NH4, UTS, UAS (0-100). Kolom kosong tidak menimpa nilai lama. Nilai Akhir dihitung otomatis. Jangan ubah nama sheet & judul kolom.'], ['No', 'NIS', 'Nama Siswa', 'NH1', 'NH2', 'NH3', 'NH4', 'UTS', 'UAS'], [6, 20, 42, 9, 9, 9, 9, 9, 9], d, 'FF047857');
+                });
+                await saveWb(wb, list.length === 1 ? `Template_Rekap_${list[0].nama}.xlsx`.replace(/[\\\/?*:]/g, '-') : 'Template_Rekap_Semua_Mapel.xlsx');
+            };
+            const impRekap = e => readBook(e, wb => {
+                let ok = 0, bad = 0; const nf = [], lines = [], skip = [];
+                wb.SheetNames.forEach(sn => {
+                    const t = table(wb.Sheets[sn], HEAD); if (!t) return;
+                    let m = mapel.value.find(x => san(x.nama) === san(sn));
+                    if (!m && wb.SheetNames.length === 1 && tplRekapMapel.value !== 'ALL') m = mapel.value.find(x => x.id === tplRekapMapel.value);
+                    if (!m) { skip.push(sn); return; }
+                    const iN = ci(t.head, /^nis$/), iM = ci(t.head, /^nama/);
+                    const idx = REK.map(k => ci(t.head, new RegExp('^' + k.replace(/(\d)/, ' ?$1') + '$')));
+                    let n = 0;
+                    t.rows.forEach(r => {
+                        const nama = String(r[iM] ?? '').trim(), nis = iN >= 0 ? cleanNis(r[iN]) : '';
+                        if (!nama && !nis) return;
+                        const vals = idx.map(i => i >= 0 ? toNum(r[i]) : null);
+                        if (vals.every(v => v === null)) return;
+                        const s = findSiswa(nis, nama);
+                        if (!s) { nf.push(nama || nis); return; }
+                        const key = `${m.id}_${s.id}`, cur = daftarNilai.value[key] || { nh1: null, nh2: null, nh3: null, nh4: null, uts: null, uas: null }, nw = { ...cur };
+                        REK.forEach((k, j) => { if (Number.isNaN(vals[j])) bad++; else if (vals[j] !== null) nw[k] = vals[j]; });
+                        daftarNilai.value[key] = nw; n++;
+                    });
+                    ok += n; lines.push(`${m.nama}: ${n} siswa diperbarui`);
+                });
+                if (bad) lines.push(`${bad} sel dilewati: nilai bukan angka 0-100`);
+                if (nf.length) lines.push(`${nf.length} siswa tidak ada di Data Siswa: ` + nf.slice(0, 8).join(', ') + (nf.length > 8 ? ', ...' : ''));
+                if (skip.length) lines.push('Sheet tidak cocok dengan nama mapel (dilewati): ' + skip.join(', '));
+                if (!lines.length) lines.push('Tidak ada nilai yang terbaca. Pastikan memakai template dari menu ini.');
+                report('Impor Rekap Nilai', lines);
+            });
 
             const printType = ref('analisis'); const printMapelId = ref(''); const printMateriId = ref('');
             const showMarginSettings = ref(false);
@@ -1255,6 +1433,7 @@
                 newMapel, newMateri, selectedMapel, addMapel, hapusMapel, addMateri, hapusMateri,
                 anMapelId, anMateriId, currentMateriList, listAnalisis, calcAnalisis, downloadAnalisisSyncTemplate, importAnalisisExcel, syncToDaftarNilai,
                 dnMapelId, listDaftarNilai, calcDaftar,
+                importReport, tplMapelId, tplMateriId, tplRekapMapel, autoSync, tplMateriList, dlSiswa, dlMapel, dlNilai, dlRekap, impMapel, impAnalisisTab, impRekap,
                 printType, printMapelId, printMateriId, showMarginSettings, printPreviewStyle, printWrapperStyle,
                 printDataAnalisis, printDataDaftar, printStats, getMapelName, getMateriName,
                 doSettings, applyPrintSettings, doPrint, exportPDF, exportExcel, exportDOCX, uploadLogo,
